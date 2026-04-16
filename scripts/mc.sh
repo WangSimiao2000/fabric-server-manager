@@ -12,6 +12,7 @@ source "$SCRIPT_DIR/lib/server.sh"
 source "$SCRIPT_DIR/lib/backup.sh"
 source "$SCRIPT_DIR/lib/player.sh"
 source "$SCRIPT_DIR/lib/mods.sh"
+source "$SCRIPT_DIR/lib/notify.sh"
 
 load_config
 
@@ -57,6 +58,11 @@ Mod 和日志:
   logs search <关键词> 搜索日志
   logs crash           查看崩溃报告
 
+通知与监控:
+  watchdog status      查看 watchdog 状态
+  watchdog test        发送测试通知
+  watchdog reset       重置 crash 计数
+
 配置文件: config.json（修改后无需重启，下次执行自动生效）
 EOF
 }
@@ -89,5 +95,22 @@ case "${1:-help}" in
     upgrade)  shift; bash "$SCRIPT_DIR/upgrade.sh" "$@" ;;
     rollback) cmd_rollback ;;
     logs)     shift; cmd_logs "$@" ;;
+    watchdog)
+        shift
+        case "${1:-status}" in
+            test)   notify_test ;;
+            reset)  rm -f "$BASE_DIR/.watchdog/crashes.log" "$BASE_DIR/.watchdog/state"; info "Watchdog 状态已重置" ;;
+            status)
+                echo -e "${CYAN}=== Watchdog 状态 ===${NC}"
+                local_state=$(cat "$BASE_DIR/.watchdog/state" 2>/dev/null || echo "未初始化")
+                echo "  当前状态: $local_state"
+                echo "  通知: $(cfg notify.enabled 2>/dev/null || echo false)"
+                cutoff=$(( $(date +%s) - $(cfg watchdog.crash_window_minutes 2>/dev/null || echo 10) * 60 ))
+                recent=0
+                [ -f "$BASE_DIR/.watchdog/crashes.log" ] && while read -r ts; do [ "$ts" -ge "$cutoff" ] 2>/dev/null && ((recent++)); done < "$BASE_DIR/.watchdog/crashes.log"
+                echo "  窗口内崩溃: ${recent}/$(cfg watchdog.crash_threshold 2>/dev/null || echo 3)"
+                ;;
+            *)      error "未知命令: watchdog $1"; show_help ;;
+        esac ;;
     help|*)   show_help ;;
 esac

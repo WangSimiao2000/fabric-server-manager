@@ -48,8 +48,10 @@ echo "已安装并启用 mc-server 服务"
 
 # 安装 cron 定时重启
 CRON_CMD="$CRON_SCHEDULE $SCRIPT_DIR/mc-restart.sh >> $BASE_DIR/backups/restart.log 2>&1"
-(sudo -u "$SERVER_USER" crontab -l 2>/dev/null | grep -v 'mc-restart.sh'; echo "$CRON_CMD") | sudo -u "$SERVER_USER" crontab -
+WATCHDOG_CMD="* * * * * $SCRIPT_DIR/watchdog.sh >> $BASE_DIR/.watchdog/watchdog.log 2>&1"
+(sudo -u "$SERVER_USER" crontab -l 2>/dev/null | grep -v 'mc-restart.sh' | grep -v 'watchdog.sh'; echo "$CRON_CMD"; echo "$WATCHDOG_CMD") | sudo -u "$SERVER_USER" crontab -
 echo "已添加 cron 定时重启: $CRON_SCHEDULE"
+echo "已添加 cron watchdog: 每分钟检测"
 
 # 设置权限
 chmod +x "$SCRIPT_DIR"/*.sh

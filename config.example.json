@@ -34,5 +34,20 @@
     "check": {
         "disk_warn_mb": 5120,
         "require_easyauth": true
+    },
+    "notify": {
+        "enabled": false,
+        "method": "email",
+        "email": {
+            "smtp_host": "smtp.qq.com",
+            "smtp_port": 465,
+            "from": "你的QQ邮箱@qq.com",
+            "password": "你的授权码",
+            "to": "收件邮箱@example.com"
+        }
+    },
+    "watchdog": {
+        "crash_threshold": 3,
+        "crash_window_minutes": 10
     }
 }

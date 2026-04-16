@@ -1,9 +1,8 @@
 #!/bin/bash
 # 服务器启停、状态、控制台、预检查
 
-MIN_JAVA_VERSION=$(required_java_version)
-
 preflight_check() {
+    MIN_JAVA_VERSION=$(required_java_version)
     local errors=0 warnings=0
 
     echo -e "${CYAN}=== 环境与配置检查 ===${NC}"
@@ -129,6 +128,9 @@ cmd_stop() {
     if ! is_running; then
         warn "服务器未在运行"; return 1
     fi
+    # 标记为正常关闭，避免 watchdog 误报
+    mkdir -p "$BASE_DIR/.watchdog"
+    echo "stopped" > "$BASE_DIR/.watchdog/state"
     info "正在关闭服务器 (${STOP_COUNTDOWN}秒倒计时)..."
     send_cmd "say §c服务器将在${STOP_COUNTDOWN}秒后关闭..."
     sleep "$STOP_COUNTDOWN"
