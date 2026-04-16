@@ -25,13 +25,19 @@ MC_Server/
 ├── GameFile/                # Minecraft 服务器游戏文件
 ├── scripts/
 │   ├── mc.sh                # 统一管理入口（日常使用这一个即可）
+│   ├── common.sh            # 公共函数库（cfg/日志/tmux辅助）
+│   ├── lib/
+│   │   ├── server.sh        # 启停、状态、控制台、预检查
+│   │   ├── backup.sh        # 备份、恢复、清理、回退
+│   │   ├── player.sh        # 玩家管理
+│   │   └── mods.sh          # Mod管理、日志、监控
 │   ├── upgrade.sh           # 版本升级（自动更新 Fabric + Mods + 依赖）
 │   ├── deploy.sh            # 一键部署（新服务器上运行一次）
 │   ├── install-deps.sh      # 安装系统依赖
-│   ├── cleanup.sh           # 清理无用文件
-│   ├── setup-easyauth.sh    # 安装 EasyAuth 登录 mod
 │   ├── install-service.sh   # 安装 systemd 服务和 cron 定时任务
-│   └── mc-restart.sh        # 定时重启+冷备份（由 cron 自动调用）
+│   ├── mc-restart.sh        # 定时重启+冷备份（由 cron 自动调用）
+│   ├── cleanup.sh           # 清理无用文件
+│   └── setup-easyauth.sh    # 安装 EasyAuth 登录 mod
 ├── backups/                 # 冷备份 + 升级快照
 └── docs/
     ├── README.md            # 本文档
