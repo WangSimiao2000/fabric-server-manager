@@ -6,6 +6,9 @@ MC="$SCRIPT_DIR/mc.sh"
 
 log() { echo "[$(date '+%Y-%m-%d %H:%M:%S')] $1"; }
 
+# 加锁防止并发
+acquire_lock
+
 WARN_MIN=$(cfg restart.warn_minutes 2>/dev/null || echo 5)
 
 log "=== 定时重启开始 (警告时间: ${WARN_MIN}分钟) ==="

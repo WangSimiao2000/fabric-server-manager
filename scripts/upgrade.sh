@@ -8,10 +8,15 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 source "$SCRIPT_DIR/common.sh"
+source "$SCRIPT_DIR/lib/server.sh"
+source "$SCRIPT_DIR/lib/backup.sh"
+source "$SCRIPT_DIR/lib/notify.sh"
+load_config
 MODS_DIR="$GAME_DIR/mods"
-MC="$SCRIPT_DIR/mc.sh"
 UA="FabricServerManager/1.0"
 LAUNCHER_VERSION="1.0.3"
+
+acquire_lock
 
 step()  { echo -e "\n${CYAN}=== $1 ===${NC}"; }
 
@@ -42,7 +47,7 @@ if [ -z "$TARGET_MC_VERSION" ]; then
 
     # 获取最新稳定版本列表，逐个检查
     CURRENT_JAR=$(cfg server.fabric_jar)
-    CURRENT_MC=$(echo "$CURRENT_JAR" | grep -oP 'mc\.\K[0-9]+\.[0-9]+(\.[0-9]+)?')
+    CURRENT_MC=$(get_mc_version "$CURRENT_JAR")
 
     # 收集 mod 名称和 project_id 的映射
     mod_names=()
@@ -55,12 +60,15 @@ if [ -z "$TARGET_MC_VERSION" ]; then
     python3 -c "
 import json, sys, urllib.request
 
-ua = '$UA'
-mod_ids = '''$(printf '%s\n' "${mod_ids[@]+"${mod_ids[@]}"}")'''.strip().split('\n')
-mod_names = '''$(printf '%s\n' "${mod_names[@]+"${mod_names[@]}"}")'''.strip().split('\n')
-current = '$CURRENT_MC'
-unknown = '''$(printf '%s\n' "${unknown_mods[@]+"${unknown_mods[@]}"}")'''.strip().split('\n')
-unknown = [u for u in unknown if u]
+ua = sys.argv[1]
+mod_ids_raw = sys.argv[2].strip()
+mod_names_raw = sys.argv[3].strip()
+current = sys.argv[4]
+unknown_raw = sys.argv[5].strip()
+
+mod_ids = mod_ids_raw.split('\n') if mod_ids_raw else []
+mod_names = mod_names_raw.split('\n') if mod_names_raw else []
+unknown = [u for u in (unknown_raw.split('\n') if unknown_raw else []) if u]
 
 # 建立 project_id -> mod名称 的映射（通过索引对应）
 # mod_ids 只包含识别到的 mod，需要重建映射
@@ -139,12 +147,12 @@ elif best_ver:
         print(f'  如可接受禁用以上 Mod，执行: mc.sh upgrade {best_ver}')
 else:
     print(f'  未找到兼容版本')
-"
+" "$UA" "$(printf '%s\n' "${mod_ids[@]+"${mod_ids[@]}"}")" "$(printf '%s\n' "${mod_names[@]+"${mod_names[@]}"}")" "$CURRENT_MC" "$(printf '%s\n' "${unknown_mods[@]+"${unknown_mods[@]}"}")"
     exit 0
 fi
 
 CURRENT_JAR=$(cfg server.fabric_jar)
-CURRENT_MC=$(echo "$CURRENT_JAR" | grep -oP 'mc\.\K[0-9]+\.[0-9]+(\.[0-9]+)?')
+CURRENT_MC=$(get_mc_version "$CURRENT_JAR")
 info "当前版本: MC $CURRENT_MC"
 info "目标版本: MC $TARGET_MC_VERSION"
 
@@ -183,7 +191,27 @@ MODS_UNKNOWN=()
 
 # 缓存 mod -> project_id 映射，避免步骤6重复调用API
 MOD_CACHE=$(mktemp)
-trap "rm -f '$MOD_CACHE'" EXIT
+SNAPSHOT_DIR=""  # 设置后 trap 会自动回滚
+_upgrade_cleanup() {
+    local exit_code=$?
+    rm -f "$MOD_CACHE"
+    if [ $exit_code -ne 0 ] && [ -n "$SNAPSHOT_DIR" ] && [ -d "$SNAPSHOT_DIR" ]; then
+        echo ""
+        error "升级失败 (exit $exit_code)，正在从快照自动回滚..."
+        # 还原 Fabric jar
+        local old_jar
+        old_jar=$(ls "$SNAPSHOT_DIR"/fabric-server-mc.*.jar 2>/dev/null | head -1)
+        [ -n "$old_jar" ] && { rm -f "$GAME_DIR"/fabric-server-mc.*.jar; cp "$old_jar" "$GAME_DIR/"; }
+        # 还原 mods
+        rm -rf "$GAME_DIR/mods"
+        cp -r "$SNAPSHOT_DIR/mods" "$GAME_DIR/mods"
+        # 还原 config
+        cp "$SNAPSHOT_DIR/config.json" "$CONFIG_FILE"
+        rm -rf "$GAME_DIR/.fabric"
+        info "已自动回滚到 MC $(cat "$SNAPSHOT_DIR/mc_version.txt" 2>/dev/null)"
+    fi
+}
+trap '_upgrade_cleanup' EXIT
 
 for jar in "$MODS_DIR"/*.jar; do
     [ -f "$jar" ] || continue
@@ -267,18 +295,15 @@ read -rp "确认开始升级？(y/n) " answer
 # ==================== 4. 关闭服务器 + 全量备份 ====================
 step "4/7 关闭服务器并执行全量备份"
 
-if "$MC" status 2>/dev/null | grep -q "运行中"; then
+if is_running; then
     info "通知玩家..."
-    "$MC" player cmd "say §c[升级维护] 服务器即将关闭进行版本升级 ($CURRENT_MC -> $TARGET_MC_VERSION)，请及时下线" 2>/dev/null || true
+    send_cmd "say §c[升级维护] 服务器即将关闭进行版本升级 ($CURRENT_MC -> $TARGET_MC_VERSION)，请及时下线" 2>/dev/null || true
     sleep 10
     info "关闭服务器..."
-    "$MC" stop || true
+    cmd_stop || true
     sleep 5
     # 等待完全停止
-    timeout=30
-    while "$MC" status 2>/dev/null | grep -q "运行中" && [ $timeout -gt 0 ]; do
-        sleep 1; timeout=$((timeout - 1))
-    done
+    wait_stop 30
 fi
 
 # 确保 Java 进程已退出
@@ -287,10 +312,10 @@ if pgrep -f "fabric-server-mc" &>/dev/null; then
     pkill -f "fabric-server-mc" || true
     sleep 3
 fi
-tmux kill-session -t "$(cfg server.session_name)" 2>/dev/null || true
+tmux kill-session -t "$SESSION_NAME" 2>/dev/null || true
 
 info "执行全量备份..."
-"$MC" backup create
+backup_create
 info "备份完成"
 
 # 创建升级快照（用于快速回退）
@@ -310,7 +335,13 @@ DOWNLOAD_URL="https://meta.fabricmc.net/v2/versions/loader/$TARGET_MC_VERSION/$L
 info "下载: $NEW_JAR"
 
 if curl -fSL -o "$GAME_DIR/$NEW_JAR" "$DOWNLOAD_URL" -H "User-Agent: $UA"; then
-    info "下载成功: $(du -h "$GAME_DIR/$NEW_JAR" | cut -f1)"
+    # 验证下载的 jar 是有效的 zip/jar 文件
+    if ! python3 -c "import zipfile,sys; zipfile.ZipFile(sys.argv[1])" "$GAME_DIR/$NEW_JAR" 2>/dev/null; then
+        error "下载的 jar 文件无效（非合法 zip/jar），可能下载损坏"
+        rm -f "$GAME_DIR/$NEW_JAR"
+        exit 1
+    fi
+    info "下载成功: $(du -h "$GAME_DIR/$NEW_JAR" | cut -f1) (完整性校验通过)"
 else
     error "下载失败！"
     exit 1
@@ -366,6 +397,7 @@ if releases:
     print(f['url'])
     print(f['filename'])
     print(v['version_number'])
+    print(f.get('hashes',{}).get('sha1',''))
     # 输出 required 依赖的 project_id
     for dep in v.get('dependencies', []):
         if dep.get('dependency_type') == 'required' and dep.get('project_id'):
@@ -382,6 +414,7 @@ if releases:
     new_url=$(echo "$new_info" | grep -v '^DEP:' | sed -n '1p')
     new_filename=$(echo "$new_info" | grep -v '^DEP:' | sed -n '2p')
     new_version=$(echo "$new_info" | grep -v '^DEP:' | sed -n '3p')
+    new_sha1=$(echo "$new_info" | grep -v '^DEP:' | sed -n '4p')
 
     # 收集依赖
     for dep_id in $(echo "$new_info" | grep '^DEP:' | cut -d: -f2); do
@@ -394,6 +427,11 @@ if releases:
     fi
 
     if curl -fSL -o "$MODS_DIR/$new_filename" "$new_url" -H "User-Agent: $UA" 2>/dev/null; then
+        if [ -n "$new_sha1" ] && ! verify_sha "$MODS_DIR/$new_filename" "$new_sha1" sha1; then
+            error "SHA1 校验失败: $new_filename，保留旧版"
+            rm -f "$MODS_DIR/$new_filename"
+            continue
+        fi
         rm -f "$jar"
         info "已更新: $name -> $new_filename"
         update_count=$((update_count + 1))
@@ -431,6 +469,7 @@ if releases:
     f = next((f for f in v['files'] if f['primary']), v['files'][0])
     print(f['url'])
     print(f['filename'])
+    print(f.get('hashes',{}).get('sha1',''))
 " 2>/dev/null || true)
 
         if [ -z "$dep_ver" ]; then
@@ -440,12 +479,18 @@ if releases:
 
         dep_url=$(echo "$dep_ver" | sed -n '1p')
         dep_filename=$(echo "$dep_ver" | sed -n '2p')
+        dep_sha1=$(echo "$dep_ver" | sed -n '3p')
 
         if [ -f "$MODS_DIR/$dep_filename" ]; then
             continue
         fi
 
         if curl -fSL -o "$MODS_DIR/$dep_filename" "$dep_url" -H "User-Agent: $UA" 2>/dev/null; then
+            if [ -n "$dep_sha1" ] && ! verify_sha "$MODS_DIR/$dep_filename" "$dep_sha1" sha1; then
+                error "SHA1 校验失败: $dep_filename"
+                rm -f "$MODS_DIR/$dep_filename"
+                continue
+            fi
             info "已安装依赖: $dep_filename"
             update_count=$((update_count + 1))
         else
@@ -457,14 +502,17 @@ fi
 # ==================== 7. 更新配置并启动 ====================
 step "7/7 更新配置并启动"
 
-# 更新 config.json
+# 更新 config.json（原子写入）
 python3 -c "
-import json
-with open('$CONFIG_FILE', 'r') as f: c = json.load(f)
-c['server']['fabric_jar'] = '$NEW_JAR'
-with open('$CONFIG_FILE', 'w') as f: json.dump(c, f, indent=4, ensure_ascii=False)
+import json, sys, os, tempfile
+config_file, new_jar = sys.argv[1], sys.argv[2]
+with open(config_file, 'r') as f: c = json.load(f)
+c['server']['fabric_jar'] = new_jar
+fd, tmp = tempfile.mkstemp(dir=os.path.dirname(config_file))
+with os.fdopen(fd, 'w') as f: json.dump(c, f, indent=4, ensure_ascii=False)
+os.replace(tmp, config_file)
 print('config.json 已更新')
-"
+" "$CONFIG_FILE" "$NEW_JAR"
 
 # MiniMOTD 版本号将在 mc.sh start 时从 config.json 自动同步
 
@@ -482,7 +530,7 @@ fi
 
 # 启动服务器
 info "启动服务器..."
-"$MC" start
+cmd_start
 
 echo ""
 echo -e "${CYAN}╔══════════════════════════════════════════╗${NC}"
@@ -496,5 +544,5 @@ echo "  Mods 已更新: $update_count 个"
 echo ""
 echo "建议:"
 echo "  1. 进入游戏检查地图和 Mod 是否正常"
-echo "  2. 查看日志: $MC logs tail"
+echo "  2. 查看日志: mc.sh logs tail"
 [ $fail_count -gt 0 ] && echo "  3. 不兼容的 Mod 在 $MODS_DIR.disabled/ 中，待更新后可手动恢复"

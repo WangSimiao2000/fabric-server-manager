@@ -16,6 +16,12 @@ source "$SCRIPT_DIR/lib/notify.sh"
 
 load_config
 
+# 对修改性操作加锁，防止并发执行
+case "${1:-help}" in
+    start|stop|restart|backup|upgrade|rollback)
+        acquire_lock ;;
+esac
+
 # ==================== 帮助 ====================
 show_help() {
     cat << 'EOF'

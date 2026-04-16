@@ -15,7 +15,7 @@ JAVA_OPTS=$(cfg server.java_opts)
 STOP_COUNTDOWN=$(cfg server.stop_countdown)
 CRON_SCHEDULE=$(cfg restart.cron)
 GAME_DIR="$BASE_DIR/GameFile"
-MC_VERSION=$(echo "$FABRIC_JAR" | grep -oP 'mc\.\K[0-9]+\.[0-9]+(\.[0-9]+)?')
+MC_VERSION=$(get_mc_version)
 
 # 自动生成 systemd service 文件
 echo "生成 systemd 服务文件..."

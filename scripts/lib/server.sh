@@ -77,29 +77,29 @@ cmd_start() {
 
     # 同步 motd
     python3 -c "
-import json, re
-with open('$CONFIG_FILE') as f: c = json.load(f)
+import json, re, sys
+config_file, game_dir = sys.argv[1], sys.argv[2]
+with open(config_file) as f: c = json.load(f)
 motd = c['server'].get('motd', {})
 jar = c['server']['fabric_jar']
 ver = re.search(r'mc\.([0-9]+\.[0-9]+(?:\.[0-9]+)?)', jar)
 ver = ver.group(1) if ver else ''
-sp = '$GAME_DIR/server.properties'
+sp = game_dir + '/server.properties'
 with open(sp) as f: lines = f.readlines()
 with open(sp, 'w') as f:
     for l in lines:
         if l.startswith('motd='): f.write('motd=' + motd.get('server_list', '') + '\n')
         else: f.write(l)
-mc = '$GAME_DIR/config/MiniMOTD/main.conf'
+mc = game_dir + '/config/MiniMOTD/main.conf'
 try:
     with open(mc) as f: txt = f.read()
-    import re as r
-    if 'line1' in motd: txt = r.sub(r'line1=\"[^\"]*\"', 'line1=\"' + motd['line1'] + '\"', txt)
+    if 'line1' in motd: txt = re.sub(r'line1=\"[^\"]*\"', 'line1=\"' + motd['line1'] + '\"', txt)
     if 'line2' in motd:
         line2 = motd['line2'].replace('{version}', ver)
-        txt = r.sub(r'line2=\"[^\"]*\"', 'line2=\"' + line2 + '\"', txt)
+        txt = re.sub(r'line2=\"[^\"]*\"', 'line2=\"' + line2 + '\"', txt)
     with open(mc, 'w') as f: f.write(txt)
 except: pass
-" 2>/dev/null || true
+" "$CONFIG_FILE" "$GAME_DIR" 2>/dev/null || true
 
     tmux new-session -ds "$SESSION_NAME" -c "$GAME_DIR" \
         "java $JAVA_OPTS -jar $FABRIC_JAR nogui"
@@ -152,7 +152,7 @@ cmd_restart() {
 cmd_status() {
     echo -e "${CYAN}=== 服务器状态 ===${NC}"
     local mc_ver
-    mc_ver=$(echo "$FABRIC_JAR" | grep -oP 'mc\.\K[0-9]+\.[0-9]+(\.[0-9]+)?' )
+    mc_ver=$(get_mc_version)
     [ -n "$mc_ver" ] && echo "  版本: Minecraft $mc_ver (Fabric)"
     if is_running; then
         local pid

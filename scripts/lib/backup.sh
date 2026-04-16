@@ -20,12 +20,13 @@ backup_ensure_space() {
 
     while [ "$avail_mb" -lt "$needed_mb" ]; do
         local backup_count oldest
-        backup_count=$(ls "$BACKUP_DIR"/mc-backup-*.tar.gz 2>/dev/null | wc -l)
+        backup_count=$(find "$BACKUP_DIR" -maxdepth 1 -name 'mc-backup-*.tar.gz' 2>/dev/null | wc -l)
         if [ "$backup_count" -le "$BACKUP_MIN_KEEP" ]; then
             error "磁盘空间不足 (剩余 ${avail_mb}MB，需要 ${needed_mb}MB)，但仅剩 ${backup_count} 份备份(最少保留 ${BACKUP_MIN_KEEP})，拒绝删除"
             return 1
         fi
         oldest=$(ls -t "$BACKUP_DIR"/mc-backup-*.tar.gz 2>/dev/null | tail -1)
+        [ -z "$oldest" ] && return 1
         warn "磁盘空间不足 (剩余 ${avail_mb}MB)，删除最早的备份: $(basename "$oldest")"
         rm -f "$oldest"
         avail_mb=$(df -m "$BACKUP_DIR" 2>/dev/null | awk 'NR==2{print $4}')
@@ -47,15 +48,18 @@ backup_create() {
         send_cmd "save-off"
         send_cmd "save-all flush"
         sleep 5
+        # 确保 save-on 在任何退出/中断时恢复（正常返回 + 信号中断）
+        _restore_save() { send_cmd "save-on"; info "已恢复自动保存"; trap - RETURN INT TERM; }
+        trap '_restore_save' RETURN INT TERM
     fi
 
     local exclude_args=""
     exclude_args=$(python3 -c "
-import json
-with open('$CONFIG_FILE') as f: c = json.load(f)
+import json, sys
+with open(sys.argv[1]) as f: c = json.load(f)
 for e in c['backup']['exclude']:
     print(f'--exclude={e}')
-" 2>/dev/null)
+" "$CONFIG_FILE" 2>/dev/null)
 
     info "创建备份: $filename"
     tar -czf "$BACKUP_DIR/$filename" \
@@ -67,8 +71,6 @@ for e in c['backup']['exclude']:
         error "备份失败: $BACKUP_DIR/$filename"
         return 1
     fi
-
-    [ "$running" = true ] && { send_cmd "save-on"; info "已恢复自动保存"; }
 
     local size
     size=$(du -h "$BACKUP_DIR/$filename" | cut -f1)
@@ -82,12 +84,16 @@ for e in c['backup']['exclude']:
 
 backup_list() {
     echo -e "${CYAN}=== 备份列表 ===${NC}"
-    if [ ! -d "$BACKUP_DIR" ] || [ -z "$(ls "$BACKUP_DIR"/mc-backup-*.tar.gz 2>/dev/null)" ]; then
+    local files=()
+    while IFS= read -r f; do
+        files+=("$f")
+    done < <(ls -t "$BACKUP_DIR"/mc-backup-*.tar.gz 2>/dev/null)
+    if [ ${#files[@]} -eq 0 ]; then
         warn "暂无备份"; return
     fi
     printf "%-40s %8s  %s\n" "文件名" "大小" "日期"
     echo "---------------------------------------------------------------"
-    for f in $(ls -t "$BACKUP_DIR"/mc-backup-*.tar.gz 2>/dev/null); do
+    for f in "${files[@]}"; do
         printf "%-40s %8s  %s\n" "$(basename "$f")" "$(du -h "$f" | cut -f1)" "$(stat -c '%y' "$f" 2>/dev/null | cut -d. -f1)"
     done
 }
@@ -95,16 +101,40 @@ backup_list() {
 backup_clean() {
     local days=${1:-$BACKUP_KEEP_DAYS}
     info "清理 $days 天前的备份 (最少保留 $BACKUP_MIN_KEEP 份)..."
-    local total candidates
-    total=$(ls "$BACKUP_DIR"/mc-backup-*.tar.gz 2>/dev/null | wc -l)
-    candidates=$(find "$BACKUP_DIR" -name 'mc-backup-*.tar.gz' -mtime +"$days" 2>/dev/null | wc -l)
+
+    # 收集所有备份（按时间排序，最新在前）
+    local all=()
+    while IFS= read -r f; do
+        all+=("$f")
+    done < <(ls -t "$BACKUP_DIR"/mc-backup-*.tar.gz 2>/dev/null)
+    local total=${#all[@]}
+
+    # 收集过期备份
+    local expired=()
+    while IFS= read -r f; do
+        expired+=("$f")
+    done < <(find "$BACKUP_DIR" -maxdepth 1 -name 'mc-backup-*.tar.gz' -mtime +"$days" 2>/dev/null)
+    local candidates=${#expired[@]}
+
     local max_delete=$(( total - BACKUP_MIN_KEEP ))
     [ "$max_delete" -le 0 ] && { info "仅有 $total 份备份，不足最少保留数，跳过清理"; return; }
     local to_delete=$(( candidates < max_delete ? candidates : max_delete ))
     [ "$to_delete" -le 0 ] && { info "没有需要清理的备份"; return; }
-    find "$BACKUP_DIR" -name 'mc-backup-*.tar.gz' -mtime +"$days" -print0 2>/dev/null \
-        | xargs -0 ls -t 2>/dev/null | tail -"$to_delete" | xargs rm -f
-    info "已删除 $to_delete 个旧备份 (保留 $(( total - to_delete )) 份)"
+
+    # 从最旧的过期备份开始删除
+    local deleted=0
+    for (( i=${#all[@]}-1; i>=0 && deleted<to_delete; i-- )); do
+        local f="${all[$i]}"
+        # 只删除过期的
+        for e in "${expired[@]}"; do
+            if [ "$f" = "$e" ]; then
+                rm -f "$f"
+                ((deleted++))
+                break
+            fi
+        done
+    done
+    info "已删除 $deleted 个旧备份 (保留 $(( total - deleted )) 份)"
 }
 
 backup_restore() {

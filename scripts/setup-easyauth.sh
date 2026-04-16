@@ -2,21 +2,15 @@
 # Fabric Server Manager - 下载并安装 EasyAuth 登录认证 mod
 set -e
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-BASE_DIR="$(dirname "$SCRIPT_DIR")"
-GAME_DIR="$BASE_DIR/GameFile"
+source "$SCRIPT_DIR/common.sh"
+load_config
 MODS_DIR="$GAME_DIR/mods"
-CONFIG_FILE="$BASE_DIR/config.json"
 
 # 从 config.json 读取当前 MC 版本
-MC_VERSION=$(python3 -c "
-import json, re
-with open('$CONFIG_FILE') as f: c = json.load(f)
-m = re.search(r'mc\.([0-9]+\.[0-9]+(?:\.[0-9]+)?)', c['server']['fabric_jar'])
-print(m.group(1) if m else '')
-" 2>/dev/null)
+MC_VERSION=$(get_mc_version)
 
 if [ -z "$MC_VERSION" ]; then
-    echo "错误: 无法从 config.json 获取 MC 版本"
+    error "无法从 config.json 获取 MC 版本"
     exit 1
 fi
 

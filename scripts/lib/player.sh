@@ -27,12 +27,12 @@ player_list() {
     printf "%-20s %-40s %s\n" "玩家名" "UUID" "最后登录"
     echo "------------------------------------------------------------------------"
     python3 -c "
-import json
-with open('$GAME_DIR/usercache.json') as f:
+import json, sys
+with open(sys.argv[1] + '/usercache.json') as f:
     players = json.load(f)
 for p in sorted(players, key=lambda x: x.get('expiresOn',''), reverse=True):
     print(f\"{p['name']:<20s} {p['uuid']:<40s} {p.get('expiresOn','N/A')}\")
-" 2>/dev/null || {
+" "$GAME_DIR" 2>/dev/null || {
         grep -oP '"name"\s*:\s*"\K[^"]+' "$GAME_DIR/usercache.json" | while read -r name; do
             echo "  $name"
         done
