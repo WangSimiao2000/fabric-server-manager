@@ -38,15 +38,126 @@ if [ -z "$TARGET_MC_VERSION" ]; then
     echo "用法: upgrade.sh <目标MC版本>"
     echo "示例: upgrade.sh 1.21.6"
     echo ""
-    echo "可用的最新 Minecraft 版本:"
-    curl -s "https://meta.fabricmc.net/v2/versions/game" -H "User-Agent: $UA" \
-        | python3 -c "
-import json,sys
-versions = json.load(sys.stdin)
-stable = [v['version'] for v in versions if v['stable']][:10]
-for v in stable: print(f'  {v}')
-" 2>/dev/null
-    exit 1
+
+    info "正在查找所有 Mod 都兼容的最新 MC 版本..."
+
+    # 收集所有 mod 的 project_id
+    mod_ids=()
+    unknown_mods=()
+    for jar in "$MODS_DIR"/*.jar; do
+        [ -f "$jar" ] || continue
+        [ -d "$jar" ] && continue
+        sha1=$(sha1sum "$jar" | cut -d' ' -f1)
+        pid=$(curl -s "https://api.modrinth.com/v2/version_file/$sha1?algorithm=sha1" -H "User-Agent: $UA" \
+            | python3 -c "import json,sys; print(json.load(sys.stdin).get('project_id',''))" 2>/dev/null || true)
+        if [ -n "$pid" ]; then
+            mod_ids+=("$pid")
+        else
+            unknown_mods+=("$(basename "$jar")")
+        fi
+    done
+
+    # 获取最新稳定版本列表，逐个检查
+    CURRENT_JAR=$(cfg server.fabric_jar)
+    CURRENT_MC=$(echo "$CURRENT_JAR" | grep -oP 'mc\.\K[0-9]+\.[0-9]+(\.[0-9]+)?')
+
+    # 收集 mod 名称和 project_id 的映射
+    mod_names=()
+    for jar in "$MODS_DIR"/*.jar; do
+        [ -f "$jar" ] || continue
+        [ -d "$jar" ] && continue
+        mod_names+=("$(basename "$jar")")
+    done
+
+    python3 -c "
+import json, sys, urllib.request
+
+ua = '$UA'
+mod_ids = '''$(printf '%s\n' "${mod_ids[@]}")'''.strip().split('\n')
+mod_names = '''$(printf '%s\n' "${mod_names[@]}")'''.strip().split('\n')
+current = '$CURRENT_MC'
+unknown = '''$(printf '%s\n' "${unknown_mods[@]}")'''.strip().split('\n')
+unknown = [u for u in unknown if u]
+
+# 建立 project_id -> mod名称 的映射（通过索引对应）
+# mod_ids 只包含识别到的 mod，需要重建映射
+id_to_name = {}
+idx = 0
+for name in mod_names:
+    # unknown mods 没有 id，跳过
+    if name in unknown:
+        continue
+    if idx < len(mod_ids):
+        id_to_name[mod_ids[idx]] = name
+        idx += 1
+
+# 获取稳定版本
+req = urllib.request.Request('https://meta.fabricmc.net/v2/versions/game', headers={'User-Agent': ua})
+versions = json.loads(urllib.request.urlopen(req).read())
+stable = [v['version'] for v in versions if v['stable']]
+
+def has_loader(ver):
+    try:
+        req = urllib.request.Request(f'https://meta.fabricmc.net/v2/versions/loader/{ver}', headers={'User-Agent': ua})
+        d = json.loads(urllib.request.urlopen(req).read())
+        return any(v['loader']['stable'] for v in d)
+    except: return False
+
+def check_mods(ver, ids):
+    ok, fail = [], []
+    for pid in ids:
+        try:
+            url = f'https://api.modrinth.com/v2/project/{pid}/version?game_versions=%5B%22{ver}%22%5D&loaders=%5B%22fabric%22%5D'
+            req = urllib.request.Request(url, headers={'User-Agent': ua})
+            d = json.loads(urllib.request.urlopen(req).read())
+            if d: ok.append(pid)
+            else: fail.append(pid)
+        except:
+            fail.append(pid)
+    return ok, fail
+
+print()
+total = len(mod_ids)
+best_ver, best_ok, best_fail = None, 0, []
+
+for ver in stable[:10]:
+    sys.stdout.write(f'  检查 {ver} ...')
+    sys.stdout.flush()
+    if not has_loader(ver):
+        print(' Fabric 不支持')
+        continue
+    ok, fail = check_mods(ver, mod_ids)
+    n_ok = len(ok)
+    if n_ok == total:
+        print(f' ✓ 全部 {total} 个 Mod 兼容')
+    else:
+        fail_names = [id_to_name.get(p, p) for p in fail]
+        print(f' {n_ok}/{total} 兼容，不兼容: ' + ', '.join(fail_names))
+    if n_ok > best_ok:
+        best_ver, best_ok, best_fail = ver, n_ok, fail
+
+print()
+if unknown:
+    print(f'  ⚠ {len(unknown)} 个 Mod 不在 Modrinth，无法自动检查:')
+    for u in unknown: print(f'    ? {u}')
+    print()
+
+if best_ver and best_ok == total:
+    if best_ver == current:
+        print(f'  当前已是最新全兼容版本: MC {current}')
+    else:
+        print(f'  ✅ 推荐升级到: MC {best_ver} (所有 {total} 个 Mod 均兼容)')
+        print(f'  执行: mc.sh upgrade {best_ver}')
+elif best_ver:
+    fail_names = [id_to_name.get(p, p) for p in best_fail]
+    print(f'  最佳版本: MC {best_ver} ({best_ok}/{total} 个 Mod 兼容)')
+    print('  不兼容: ' + ', '.join(fail_names))
+    if best_ver != current:
+        print(f'  如可接受禁用以上 Mod，执行: mc.sh upgrade {best_ver}')
+else:
+    print(f'  未找到兼容版本')
+"
+    exit 0
 fi
 
 CURRENT_JAR=$(cfg server.fabric_jar)
@@ -106,7 +217,7 @@ for jar in "$MODS_DIR"/*.jar; do
         continue
     fi
 
-    project_id=$(echo "$body" | python3 -c "import json,sys; print(json.load(sys.stdin).get('project_id',''))" 2>/dev/null)
+    project_id=$(echo "$body" | python3 -c "import json,sys; print(json.load(sys.stdin).get('project_id',''))" 2>/dev/null || true)
     if [ -z "$project_id" ]; then
         MODS_UNKNOWN+=("$name")
         continue
@@ -127,7 +238,7 @@ for jar in "$MODS_DIR"/*.jar; do
         continue
     fi
 
-    has_it=$(echo "$hv_body" | python3 -c "import json,sys; d=json.load(sys.stdin); print('yes' if d else 'no')" 2>/dev/null)
+    has_it=$(echo "$hv_body" | python3 -c "import json,sys; d=json.load(sys.stdin); print('yes' if d else 'no')" 2>/dev/null || true)
     if [ "$has_it" = "yes" ]; then
         MODS_OK+=("$name")
     else
@@ -301,6 +412,13 @@ c['server']['fabric_jar'] = '$NEW_JAR'
 with open('$CONFIG_FILE', 'w') as f: json.dump(c, f, indent=4, ensure_ascii=False)
 print('config.json 已更新')
 "
+
+# 更新 MiniMOTD 中的版本号
+MOTD_CONF="$GAME_DIR/config/MiniMOTD/main.conf"
+if [ -f "$MOTD_CONF" ]; then
+    sed -i "s/$CURRENT_MC/$TARGET_MC_VERSION/g" "$MOTD_CONF"
+    info "MiniMOTD 版本已更新为 $TARGET_MC_VERSION"
+fi
 
 # 更新 systemd 服务文件
 if [ -f /etc/systemd/system/mc-server.service ]; then

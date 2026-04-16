@@ -63,7 +63,7 @@ preflight_check() {
     # Java
     if command -v java &>/dev/null; then
         local java_ver
-        java_ver=$(java -version 2>&1 | head -1 | grep -oP '"\K[^"]+' | cut -d. -f1)
+        java_ver=$(java -version 2>&1 | head -1 | grep -oP '"\K[^"]+' | head -1 | cut -d. -f1)
         if [ "$java_ver" -ge 21 ] 2>/dev/null; then
             info "Java 版本: $java_ver ✓"
         else
