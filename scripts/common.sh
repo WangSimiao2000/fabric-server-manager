@@ -58,9 +58,10 @@ send_cmd() {
 
 get_pid() {
     local pid
-    pid=$(pgrep -f "$FABRIC_JAR" | head -1)
+    # tmux pane_pid points directly to the java child process
+    pid=$(tmux list-panes -t "$SESSION_NAME" -F '#{pane_pid}' 2>/dev/null | head -1)
     if [ -z "$pid" ]; then
-        pid=$(tmux list-panes -t "$SESSION_NAME" -F '#{pane_pid}' 2>/dev/null | head -1)
+        pid=$(pgrep -f "java.*$FABRIC_JAR" | head -1)
     fi
     echo "$pid"
 }

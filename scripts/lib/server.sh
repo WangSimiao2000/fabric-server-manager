@@ -151,9 +151,16 @@ cmd_status() {
         local pid
         pid=$(get_pid)
         info "状态: 运行中 (PID: $pid)"
-        ps -p "$pid" -o %cpu,%mem,etime --no-headers 2>/dev/null | awk '{printf "  CPU: %s%%  内存: %s%%  运行时间: %s\n", $1, $2, $3}'
+        # Use top -bn2 (two samples, 0.5s apart) for a meaningful CPU reading
+        local stats
+        stats=$(top -bn2 -d0.5 -p "$pid" 2>/dev/null | awk -v p="$pid" '$1==p {cpu=$9; mem=$10} END {printf "%s %s", cpu, mem}')
+        local cpu mem etime
+        cpu=$(echo "$stats" | awk '{print $1}')
+        mem=$(echo "$stats" | awk '{print $2}')
+        etime=$(ps -p "$pid" -o etime= 2>/dev/null | xargs)
+        printf "  CPU: %s%%  内存: %s%%  运行时间: %s\n" "${cpu:-?}" "${mem:-?}" "${etime:-?}"
         local rss
-        rss=$(ps -p "$pid" -o rss --no-headers 2>/dev/null | awk '{printf "%.0f", $1/1024}')
+        rss=$(ps -p "$pid" -o rss= 2>/dev/null | awk '{printf "%.0f", $1/1024}')
         [ -n "$rss" ] && echo "  Java 实际内存: ${rss}MB"
     else
         warn "状态: 未运行"
