@@ -12,7 +12,6 @@ source "$SCRIPT_DIR/lib/server.sh"
 source "$SCRIPT_DIR/lib/backup.sh"
 source "$SCRIPT_DIR/lib/player.sh"
 source "$SCRIPT_DIR/lib/mods.sh"
-source "$SCRIPT_DIR/lib/ui.sh"
 
 load_config
 
@@ -58,9 +57,6 @@ Mod 和日志:
   logs search <关键词> 搜索日志
   logs crash           查看崩溃报告
 
-交互界面:
-  ui                   启动 TUI 交互界面
-
 配置文件: config.json（修改后无需重启，下次执行自动生效）
 EOF
 }
@@ -93,6 +89,5 @@ case "${1:-help}" in
     upgrade)  shift; bash "$SCRIPT_DIR/upgrade.sh" "$@" ;;
     rollback) cmd_rollback ;;
     logs)     shift; cmd_logs "$@" ;;
-    ui)       cmd_ui ;;
     help|*)   show_help ;;
 esac
