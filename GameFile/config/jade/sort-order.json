@@ -8,6 +8,7 @@
   "minecraft:command_block": null,
   "minecraft:energy_storage": null,
   "minecraft:energy_storage.default": null,
+  "minecraft:entity_health": null,
   "minecraft:fluid_storage": null,
   "minecraft:fluid_storage.default": null,
   "minecraft:furnace": null,
@@ -24,5 +25,7 @@
   "minecraft:potion_effects": null,
   "minecraft:progress": null,
   "minecraft:redstone": null,
+  "minecraft:shelf": null,
+  "minecraft:waxed": null,
   "minecraft:zombie_villager": null
 }

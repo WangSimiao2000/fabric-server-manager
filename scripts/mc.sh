@@ -305,12 +305,14 @@ for e in c['backup']['exclude']:
 " 2>/dev/null)
 
     info "创建备份: $filename"
-    if ! tar -czf "$BACKUP_DIR/$filename" \
+    tar -czf "$BACKUP_DIR/$filename" \
         -C "$GAME_DIR" \
         $exclude_args \
         world server.properties ops.json banned-players.json banned-ips.json \
-        whitelist.json usercache.json mods config EasyAuth 2>&1 | grep -v 'file changed as we read it'; then
-        error "备份可能不完整，请检查: $BACKUP_DIR/$filename"
+        whitelist.json usercache.json mods config EasyAuth 2>&1 | grep -v 'file changed as we read it' || true
+    if [ ! -s "$BACKUP_DIR/$filename" ]; then
+        error "备份失败: $BACKUP_DIR/$filename"
+        return 1
     fi
 
     if [ "$running" = true ]; then

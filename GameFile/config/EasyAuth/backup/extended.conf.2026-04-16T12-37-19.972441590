@@ -36,23 +36,6 @@ allow-item-moving=false
 # Allow players to use items while not logged in.
 allow-item-using=false
 # 
-# Allow custom payload and custom click action packets to be processed by non-op players (op level 0 or 1) while not logged in.
-allow-custom-packets-for-non-op=false
-# 
-# Allow custom payload and custom click action packets to be processed by all players while not logged in.
-# Note: this setting overrides allowCustomPacketsForNonOp.
-allow-custom-packets=false
-# 
-# List of allowed custom packet identifiers for players who are not logged in.
-# Works similarly to allowedCommands by checking packet identifier prefix.
-# For custom payload packets, use channel identifiers (e.g. voicechat:request_secret).
-# With debug logging enabled, you can see declined custom packets in the console with their identifiers.
-allowed-custom-packets=[]
-# 
-# Allow all packets to be processed while not logged in.
-# Note: this setting overrides allowCustomPackets.
-allow-all-packets=false
-# 
 # Hide player's inventory from them while not logged in.
 hide-inventory=true
 # 
@@ -64,7 +47,7 @@ player-ignored=true
 # 
 # Cancellation of packets with player's movement and teleportation back leads to an increase number of these packets.
 # That setting limits players teleportation.
-# This setting is per-player so maximum rate would be (1000/teleportation-timeout-ms) per seconds for each unauthorised player.
+# This setting is server-wide so maximum rate would be (1000/teleportation-timeout-ms) per seconds for all unauthorised players.
 # Value 0 would effectively disable this setting so players will be teleported after each packet.
 teleportation-timeout-ms=20
 # 
@@ -114,12 +97,6 @@ forced-offline-uuid=false
 # Intended for use with proxies that handle authentication
 skip-all-auth-checks=false
 # 
-# If true, 'skipAllAuthChecks' does not apply to registered players.
-skip-all-auth-checks-not-for-registered-players=true
-# 
-# If true, 'skipAllAuthChecks' does not apply to operator (op level >=2) players.
-skip-all-auth-checks-not-for-operators=true
-# 
 # Allow players to join the server with same username as previously registered player, but in different case.
 allow-case-insensitive-username=false
 # 
@@ -144,47 +121,3 @@ log-player-registration=false
 # 
 # Log player login as info level log.
 log-player-login=false
-# 
-# Prevent offline players from joining the server using online usernames.
-prevent-offline-players-with-online-usernames=false
-# 
-# Check offline players with online usernames every time they join the server for online account.
-check-offline-players-with-online-usernames=false
-# 
-# IP Limit Settings - Restrict the number of accounts that can be registered/logged in from the same IP address.
-ip-limit {
-    # 
-    # Enable IP-based account limit.
-    # When enabled, limits the number of accounts that can be registered/logged in from the same IP address.
-    enabled=false
-    # 
-    # Maximum number of accounts allowed per IP address.
-    # Set to -1 to disable the limit.
-    max-accounts-per-ip=2
-    # 
-    # Block registration attempts when the IP limit is exceeded.
-    # If false, players can still register but admins will be notified.
-    block-excess-registration=true
-    # 
-    # Notify admins (players with op level >=3) when a new IP address attempts to exceed the account limit.
-    notify-admins=true
-    # 
-    # List of IP addresses that are exempt from the limit (e.g., localhost, trusted IPs).
-    exempt-ips=[
-        "127.0.0.1",
-        localhost
-    ]
-    # 
-    # Cache expiry time in seconds for IP account count cache.
-    # Lower values mean more frequent database queries but more accurate counts.
-    cache-expiry-seconds=300
-    # 
-    # Maximum number of concurrent online sessions allowed from the same IP address.
-    # Set to -1 to disable the limit.
-    # This check is performed at player join time.
-    max-concurrent-sessions-per-ip=-1
-    # 
-    # Whether online (premium) players are exempt from the concurrent session limit.
-    # If true, premium players that auto-login will not be blocked by the session limit.
-    exempt-online-players=false
-}

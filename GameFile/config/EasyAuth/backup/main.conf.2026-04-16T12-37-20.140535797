@@ -69,4 +69,4 @@ debug=false
 # 
 # Config Version. Used for automatic migration of config files.
 # Do not change this value manually.
-config-version=8
+config-version=4

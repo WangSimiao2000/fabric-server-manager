@@ -5,7 +5,7 @@
 # 
 # Note: If your string contains special characters, you should enclose it in double quotes.
 
-# Database type. Can be sqlite, mysql, mongodb or postgresql. SQLite is set by default.
+# Database type. Can be sqlite, mysql or mongodb. SQLite is set by default.
 database-type=sqlite
 # 
 # SQLite configuration.
@@ -45,23 +45,4 @@ mongodb {
     # 
     # MongoDB database name.
     mongodb-database=easyauth
-}
-# 
-# PostgreSQL configuration.
-postgresql {
-    # 
-    # PostgreSQL host and port (e.g. localhost:5432).
-    pg-host="localhost:5432"
-    # 
-    # PostgreSQL user.
-    pg-user=postgres
-    # 
-    # PostgreSQL password.
-    pg-password=password
-    # 
-    # PostgreSQL database name.
-    pg-database=easyauth
-    # 
-    # PostgreSQL table name.
-    pg-table=easyauth
 }

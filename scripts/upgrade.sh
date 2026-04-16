@@ -298,6 +298,14 @@ if "$MC" status 2>/dev/null | grep -q "运行中"; then
     done
 fi
 
+# 确保 Java 进程已退出
+if pgrep -f "fabric-server-mc" &>/dev/null; then
+    warn "旧进程仍在运行，强制终止..."
+    pkill -f "fabric-server-mc" || true
+    sleep 3
+fi
+tmux kill-session -t "$(cfg server.session_name)" 2>/dev/null || true
+
 info "执行全量备份..."
 "$MC" backup create
 info "备份完成"
@@ -339,6 +347,7 @@ mkdir -p "$MODS_DIR.disabled"
 
 update_count=0
 fail_count=0
+dep_ids=""
 
 for jar in "$MODS_DIR"/*.jar; do
     [ -f "$jar" ] || continue
@@ -374,7 +383,11 @@ if releases:
     print(f['url'])
     print(f['filename'])
     print(v['version_number'])
-" 2>/dev/null)
+    # 输出 required 依赖的 project_id
+    for dep in v.get('dependencies', []):
+        if dep.get('dependency_type') == 'required' and dep.get('project_id'):
+            print('DEP:' + dep['project_id'])
+" 2>/dev/null || true)
 
     if [ -z "$new_info" ]; then
         warn "不兼容，已禁用: $name"
@@ -383,9 +396,14 @@ if releases:
         continue
     fi
 
-    new_url=$(echo "$new_info" | sed -n '1p')
-    new_filename=$(echo "$new_info" | sed -n '2p')
-    new_version=$(echo "$new_info" | sed -n '3p')
+    new_url=$(echo "$new_info" | grep -v '^DEP:' | sed -n '1p')
+    new_filename=$(echo "$new_info" | grep -v '^DEP:' | sed -n '2p')
+    new_version=$(echo "$new_info" | grep -v '^DEP:' | sed -n '3p')
+
+    # 收集依赖
+    for dep_id in $(echo "$new_info" | grep '^DEP:' | cut -d: -f2); do
+        dep_ids="$dep_ids $dep_id"
+    done
 
     if [ "$name" = "$new_filename" ]; then
         info "已是最新: $name"
@@ -400,6 +418,59 @@ if releases:
         warn "下载失败，保留旧版: $name"
     fi
 done
+
+# 安装缺失的依赖 mod
+if [ -n "$dep_ids" ]; then
+    # 去重
+    dep_ids=$(echo "$dep_ids" | tr ' ' '\n' | sort -u)
+    # 获取已安装 mod 的 project_id 列表
+    installed_ids=$(cut -d= -f2 "$MOD_CACHE" 2>/dev/null | sort -u)
+
+    for dep_id in $dep_ids; do
+        # 跳过已安装的
+        if echo "$installed_ids" | grep -q "^${dep_id}$"; then
+            continue
+        fi
+
+        # 获取依赖 mod 信息
+        dep_info=$(curl -s "https://api.modrinth.com/v2/project/$dep_id" -H "User-Agent: $UA" \
+            | python3 -c "import json,sys; d=json.load(sys.stdin); print(d.get('title',''), d.get('slug',''))" 2>/dev/null || true)
+        dep_title=$(echo "$dep_info" | cut -d' ' -f1)
+
+        # 获取对应版本
+        dep_ver=$(curl -s "https://api.modrinth.com/v2/project/$dep_id/version?game_versions=%5B%22$TARGET_MC_VERSION%22%5D&loaders=%5B%22fabric%22%5D" \
+            -H "User-Agent: $UA" | python3 -c "
+import json,sys
+d = json.load(sys.stdin)
+releases = [v for v in d if v['version_type'] == 'release']
+if not releases: releases = d
+if releases:
+    v = releases[0]
+    f = next((f for f in v['files'] if f['primary']), v['files'][0])
+    print(f['url'])
+    print(f['filename'])
+" 2>/dev/null || true)
+
+        if [ -z "$dep_ver" ]; then
+            warn "依赖 $dep_title ($dep_id) 无法找到兼容版本"
+            continue
+        fi
+
+        dep_url=$(echo "$dep_ver" | sed -n '1p')
+        dep_filename=$(echo "$dep_ver" | sed -n '2p')
+
+        if [ -f "$MODS_DIR/$dep_filename" ]; then
+            continue
+        fi
+
+        if curl -fSL -o "$MODS_DIR/$dep_filename" "$dep_url" -H "User-Agent: $UA" 2>/dev/null; then
+            info "已安装依赖: $dep_filename"
+            update_count=$((update_count + 1))
+        else
+            warn "依赖下载失败: $dep_filename"
+        fi
+    done
+fi
 
 # ==================== 7. 更新配置并启动 ====================
 step "7/7 更新配置并启动"
