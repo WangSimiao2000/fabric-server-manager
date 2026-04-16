@@ -26,3 +26,6 @@ GameFile/whitelist.json
 # ===== 缓存 / 临时文件 =====
 .cache/
 GameFile/config/spark/tmp-client/
+GameFile/config/spark/tmp/
+GameFile/config/EasyAuth/backup/
+GameFile/config/*.backup*
