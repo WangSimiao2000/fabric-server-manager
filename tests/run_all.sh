@@ -1,13 +1,12 @@
 #!/bin/bash
 # 运行所有测试
-set -e
 cd "$(dirname "$0")"
 
 TOTAL_PASS=0; TOTAL_FAIL=0
 
 for test_file in test_*.sh; do
     echo -e "\n\033[1;35m>>> $test_file\033[0m"
-    output=$(bash "$test_file" 2>&1)
+    output=$(bash "$test_file" 2>&1) || true
     echo "$output"
     pass=$(echo "$output" | grep -oP '通过: \033\[0;32m\K[0-9]+' || echo 0)
     fail=$(echo "$output" | grep -oP '失败: \033\[0;31m\K[0-9]+' || echo 0)
