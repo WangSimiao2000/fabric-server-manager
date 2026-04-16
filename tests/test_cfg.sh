@@ -7,6 +7,7 @@ source "$(dirname "$0")/framework.sh"
 TMP_DIR=$(mktemp -d)
 trap "rm -rf '$TMP_DIR'" EXIT
 CONFIG_FILE="$TMP_DIR/config.json"
+BASE_DIR="$TMP_DIR"
 
 cat > "$CONFIG_FILE" << 'EOF'
 {

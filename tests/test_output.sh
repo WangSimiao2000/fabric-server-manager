@@ -4,6 +4,7 @@ source "$(dirname "$0")/framework.sh"
 SCRIPT_DIR="$(cd "$(dirname "$0")/.." && pwd)/scripts"
 TMP_DIR=$(mktemp -d); trap "rm -rf '$TMP_DIR'" EXIT
 CONFIG_FILE="$TMP_DIR/config.json"
+BASE_DIR="$TMP_DIR"
 echo '{"server":{"session_name":"mc","fabric_jar":"test","java_opts":"","user":"mc","stop_countdown":10,"port":25565},"backup":{"keep_days":7,"min_keep":3,"rsync_dest":"","exclude":[]},"check":{"disk_warn_mb":5120,"require_easyauth":false},"notify":{"enabled":false}}' > "$CONFIG_FILE"
 source "$SCRIPT_DIR/common.sh"
 
