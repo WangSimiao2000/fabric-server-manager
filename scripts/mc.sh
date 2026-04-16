@@ -146,19 +146,19 @@ preflight_check() {
 
 # ==================== 辅助函数 (tmux) ====================
 is_running() {
-    sudo -u "$SERVER_USER" tmux has-session -t "$SESSION_NAME" 2>/dev/null && return 0
-    pgrep -u "$SERVER_USER" -x java &>/dev/null
+    tmux has-session -t "$SESSION_NAME" 2>/dev/null && return 0
+    pgrep -x java &>/dev/null
 }
 
 send_cmd() {
-    sudo -u "$SERVER_USER" tmux send-keys -t "$SESSION_NAME" "$1" Enter
+    tmux send-keys -t "$SESSION_NAME" "$1" Enter
 }
 
 get_pid() {
     local pid
-    pid=$(pgrep -u "$SERVER_USER" -x java | head -1)
+    pid=$(pgrep -x java | head -1)
     if [ -z "$pid" ]; then
-        pid=$(sudo -u "$SERVER_USER" tmux list-panes -t "$SESSION_NAME" -F '#{pane_pid}' 2>/dev/null | head -1)
+        pid=$(tmux list-panes -t "$SESSION_NAME" -F '#{pane_pid}' 2>/dev/null | head -1)
     fi
     echo "$pid"
 }
@@ -183,7 +183,7 @@ cmd_start() {
         error "端口 ${port} 已被占用:"; ss -tlnp | grep ":${port} "; return 1
     fi
     info "启动服务器..."
-    sudo -u "$SERVER_USER" tmux new-session -ds "$SESSION_NAME" -c "$GAME_DIR" \
+    tmux new-session -ds "$SESSION_NAME" -c "$GAME_DIR" \
         "java $JAVA_OPTS -jar $FABRIC_JAR nogui"
     sleep 3
     if is_running; then
@@ -205,7 +205,7 @@ cmd_stop() {
         info "服务器已关闭"
     else
         error "服务器未能在30秒内关闭，强制终止..."
-        sudo -u "$SERVER_USER" tmux kill-session -t "$SESSION_NAME" 2>/dev/null
+        tmux kill-session -t "$SESSION_NAME" 2>/dev/null
     fi
 }
 
@@ -242,11 +242,7 @@ cmd_console() {
         error "服务器未在运行"; exit 1
     fi
     info "附加到服务器控制台 (按 Ctrl+B 然后 D 退出)"
-    if [ "$(whoami)" = "$SERVER_USER" ]; then
-        tmux attach -t "$SESSION_NAME"
-    else
-        sudo -u "$SERVER_USER" tmux attach -t "$SESSION_NAME"
-    fi
+    tmux attach -t "$SESSION_NAME"
 }
 
 # ==================== 备份管理 ====================

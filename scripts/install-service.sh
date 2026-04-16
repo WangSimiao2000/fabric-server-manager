@@ -34,12 +34,6 @@ CRON_SCHEDULE=$(cfg restart.cron)
 GAME_DIR="$BASE_DIR/GameFile"
 MC_VERSION=$(echo "$FABRIC_JAR" | grep -oP 'mc\.\K[0-9]+\.[0-9]+(\.[0-9]+)?')
 
-# 创建用户（如果不存在）
-if ! id -u "$SERVER_USER" &>/dev/null; then
-    echo "创建用户: $SERVER_USER"
-    useradd -r -m -d "$BASE_DIR" -s /bin/bash "$SERVER_USER"
-fi
-
 # 自动生成 systemd service 文件
 echo "生成 systemd 服务文件..."
 cat > /etc/systemd/system/mc-server.service << EOF
@@ -51,11 +45,13 @@ After=network.target
 Type=forking
 User=$SERVER_USER
 WorkingDirectory=$GAME_DIR
+RemainAfterExit=yes
 ExecStart=/usr/bin/tmux new-session -ds $SESSION_NAME -c $GAME_DIR "java $JAVA_OPTS -jar $FABRIC_JAR nogui"
-ExecStop=/usr/bin/tmux send-keys -t $SESSION_NAME "say §c服务器将在${STOP_COUNTDOWN}秒后关闭..." Enter
-ExecStop=/bin/sleep $STOP_COUNTDOWN
-ExecStop=/usr/bin/tmux send-keys -t $SESSION_NAME "stop" Enter
-ExecStop=/bin/sleep 15
+ExecStop=-/usr/bin/tmux send-keys -t $SESSION_NAME "say §c服务器将在${STOP_COUNTDOWN}秒后关闭..." Enter
+ExecStop=-/bin/sleep $STOP_COUNTDOWN
+ExecStop=-/usr/bin/tmux send-keys -t $SESSION_NAME "stop" Enter
+ExecStop=-/bin/sleep 15
+ExecStop=-/usr/bin/tmux kill-session -t $SESSION_NAME
 Restart=on-failure
 RestartSec=60
 
@@ -69,11 +65,10 @@ echo "已安装并启用 mc-server 服务"
 
 # 安装 cron 定时重启
 CRON_CMD="$CRON_SCHEDULE $SCRIPT_DIR/mc-restart.sh >> $BASE_DIR/backups/restart.log 2>&1"
-(crontab -u "$SERVER_USER" -l 2>/dev/null | grep -v 'mc-restart.sh'; echo "$CRON_CMD") | crontab -u "$SERVER_USER" -
+(sudo -u "$SERVER_USER" crontab -l 2>/dev/null | grep -v 'mc-restart.sh'; echo "$CRON_CMD") | sudo -u "$SERVER_USER" crontab -
 echo "已添加 cron 定时重启: $CRON_SCHEDULE"
 
 # 设置权限
-chown -R "$SERVER_USER":"$SERVER_USER" "$BASE_DIR"
 chmod +x "$SCRIPT_DIR"/*.sh
 
 echo ""
