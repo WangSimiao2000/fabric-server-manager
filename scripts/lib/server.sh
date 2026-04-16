@@ -1,7 +1,7 @@
 #!/bin/bash
 # 服务器启停、状态、控制台、预检查
 
-MIN_JAVA_VERSION=21
+MIN_JAVA_VERSION=$(required_java_version)
 
 preflight_check() {
     local errors=0 warnings=0

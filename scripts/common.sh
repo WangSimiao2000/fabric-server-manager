@@ -46,6 +46,27 @@ load_config() {
     REQUIRE_EASYAUTH=$(cfg check.require_easyauth)
 }
 
+# 根据 MC 版本返回所需的最低 Java 版本
+required_java_version() {
+    local mc_ver="${1:-}"
+    if [ -z "$mc_ver" ]; then
+        mc_ver=$(echo "$FABRIC_JAR" | grep -oP 'mc\.\K[0-9]+\.[0-9]+(\.[0-9]+)?' )
+    fi
+    local major minor
+    major=$(echo "$mc_ver" | cut -d. -f2)
+    minor=$(echo "$mc_ver" | cut -d. -f3)
+    minor=${minor:-0}
+    if [ "$major" -ge 21 ] || { [ "$major" -eq 20 ] && [ "$minor" -ge 5 ]; }; then
+        echo 21
+    elif [ "$major" -ge 18 ]; then
+        echo 17
+    elif [ "$major" -eq 17 ]; then
+        echo 16
+    else
+        echo 8
+    fi
+}
+
 # tmux 辅助
 is_running() {
     tmux has-session -t "$SESSION_NAME" 2>/dev/null && return 0
