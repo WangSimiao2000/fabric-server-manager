@@ -30,6 +30,7 @@
 - **Mod 管理** — 列出已安装 Mod、健康检查、重复检测
 - **玩家管理** — OP/封禁/白名单/发送命令
 - **EasyAuth 集成** — 离线模式下的登录认证支持
+- **崩溃监控** — 自动检测服务器崩溃，邮件通知 + 自动重启，反复崩溃时停止重启并告警
 
 ## 📋 前置要求
 
@@ -119,6 +120,14 @@ bash scripts/deploy.sh
 | `mc.sh logs search <关键词>` | 搜索日志 |
 | `mc.sh logs crash` | 查看崩溃报告 |
 
+### 通知与监控
+
+| 命令 | 说明 |
+|------|------|
+| `mc.sh watchdog status` | 查看 watchdog 状态 |
+| `mc.sh watchdog test` | 发送测试通知邮件 |
+| `mc.sh watchdog reset` | 重置崩溃计数 |
+
 ## ⚙️ 配置文件
 
 所有可调参数集中在 `config.json`（从 `config.example.json` 复制）：
@@ -147,6 +156,21 @@ bash scripts/deploy.sh
     "check": {
         "disk_warn_mb": 5120,         // 磁盘告警阈值 (MB)
         "require_easyauth": true
+    },
+    "notify": {
+        "enabled": false,             // 是否启用通知
+        "method": "email",
+        "email": {
+            "smtp_host": "smtp.qq.com",
+            "smtp_port": 465,         // 465(SSL) 或 587(STARTTLS)
+            "from": "发件邮箱",
+            "password": "SMTP 授权码",
+            "to": "收件邮箱"
+        }
+    },
+    "watchdog": {
+        "crash_threshold": 3,         // 窗口内崩溃次数阈值
+        "crash_window_minutes": 10    // 崩溃检测时间窗口（分钟）
     }
 }
 ```
@@ -168,8 +192,10 @@ fabric-server-manager/
 │   │   ├── server.sh            # 启停、状态、预检查
 │   │   ├── backup.sh            # 备份、恢复、回退
 │   │   ├── player.sh            # 玩家管理
-│   │   └── mods.sh              # Mod 管理、日志、监控
+│   │   ├── mods.sh              # Mod 管理、日志、监控
+│   │   └── notify.sh            # 邮件通知
 │   ├── upgrade.sh               # 版本升级
+│   ├── watchdog.sh              # 崩溃监控看门狗
 │   ├── deploy.sh                # 一键部署
 │   ├── install-deps.sh          # 安装系统依赖
 │   ├── install-service.sh       # 安装 systemd + cron

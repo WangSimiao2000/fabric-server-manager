@@ -4,6 +4,7 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 BASE_DIR="$(dirname "$SCRIPT_DIR")"
 source "$SCRIPT_DIR/common.sh"
+load_config
 
 step()  { echo -e "\n${CYAN}=== $1 ===${NC}"; }
 

@@ -69,8 +69,7 @@ required_java_version() {
 
 # tmux 辅助
 is_running() {
-    tmux has-session -t "$SESSION_NAME" 2>/dev/null && return 0
-    pgrep -f "$FABRIC_JAR" &>/dev/null
+    tmux has-session -t "$SESSION_NAME" 2>/dev/null && pgrep -f "java.*$FABRIC_JAR" &>/dev/null
 }
 
 send_cmd() {
