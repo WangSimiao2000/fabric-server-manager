@@ -1,0 +1,174 @@
+#!/bin/bash
+# 服务器启停、状态、控制台、预检查
+
+preflight_check() {
+    local errors=0 warnings=0
+
+    echo -e "${CYAN}=== 环境与配置检查 ===${NC}"
+
+    if [ -f "$CONFIG_FILE" ]; then
+        info "config.json 已加载 ✓"
+    else
+        error "config.json 不存在"; ((errors++))
+    fi
+
+    if command -v java &>/dev/null; then
+        local java_ver
+        java_ver=$(java -version 2>&1 | head -1 | grep -oP '"\K[^"]+' | head -1 | cut -d. -f1)
+        if [ "$java_ver" -ge 21 ] 2>/dev/null; then
+            info "Java 版本: $java_ver ✓"
+        else
+            error "Java 版本 $java_ver < 21"; ((errors++))
+        fi
+    else
+        error "Java 未安装"; ((errors++))
+    fi
+
+    if command -v tmux &>/dev/null; then
+        info "tmux 已安装 ✓"
+    else
+        error "tmux 未安装"; ((errors++))
+    fi
+
+    [ -d "$GAME_DIR" ] && info "GameFile 目录存在 ✓" || { error "GameFile 目录不存在: $GAME_DIR"; ((errors++)); }
+    [ -f "$GAME_DIR/$FABRIC_JAR" ] && info "Fabric 服务端存在 ✓" || { error "Fabric jar 不存在: $FABRIC_JAR"; ((errors++)); }
+    grep -q 'eula=true' "$GAME_DIR/eula.txt" 2>/dev/null && info "EULA 已同意 ✓" || { error "EULA 未同意"; ((errors++)); }
+
+    if [ -f "$GAME_DIR/server.properties" ]; then
+        grep -q 'online-mode=false' "$GAME_DIR/server.properties" && info "离线模式已启用 ✓" || { warn "online-mode 不是 false"; ((warnings++)); }
+    else
+        error "server.properties 不存在"; ((errors++))
+    fi
+
+    if ls "$GAME_DIR/mods"/easyauth-*.jar &>/dev/null; then
+        info "EasyAuth 登录认证 mod 已安装 ✓"
+    elif [ "$REQUIRE_EASYAUTH" = "true" ]; then
+        warn "EasyAuth 未安装！离线模式下任何人可冒充其他玩家"; ((warnings++))
+    fi
+
+    local avail_mb
+    avail_mb=$(df -m "$GAME_DIR" 2>/dev/null | awk 'NR==2{print $4}')
+    if [ -n "$avail_mb" ]; then
+        [ "$avail_mb" -lt "$DISK_WARN_MB" ] && { warn "磁盘剩余空间不足: ${avail_mb}MB"; ((warnings++)); } || info "磁盘剩余: ${avail_mb}MB ✓"
+    fi
+
+    echo ""
+    if [ "$errors" -gt 0 ]; then
+        error "发现 $errors 个严重问题，$warnings 个警告"; return 1
+    elif [ "$warnings" -gt 0 ]; then
+        warn "发现 $warnings 个警告，建议处理"; return 0
+    else
+        info "所有检查通过 ✓"; return 0
+    fi
+}
+
+cmd_start() {
+    preflight_check || { error "预检查未通过，无法启动"; exit 1; }
+    if is_running; then
+        warn "服务器已在运行中"; return 1
+    fi
+    local port
+    port=$(cfg server.port)
+    if ss -tlnp | grep -q ":${port} "; then
+        error "端口 ${port} 已被占用:"; ss -tlnp | grep ":${port} "; return 1
+    fi
+    info "启动服务器..."
+
+    # 同步 motd
+    python3 -c "
+import json, re
+with open('$CONFIG_FILE') as f: c = json.load(f)
+motd = c['server'].get('motd', {})
+jar = c['server']['fabric_jar']
+ver = re.search(r'mc\.([0-9]+\.[0-9]+(?:\.[0-9]+)?)', jar)
+ver = ver.group(1) if ver else ''
+sp = '$GAME_DIR/server.properties'
+with open(sp) as f: lines = f.readlines()
+with open(sp, 'w') as f:
+    for l in lines:
+        if l.startswith('motd='): f.write('motd=' + motd.get('server_list', '') + '\n')
+        else: f.write(l)
+mc = '$GAME_DIR/config/MiniMOTD/main.conf'
+try:
+    with open(mc) as f: txt = f.read()
+    import re as r
+    if 'line1' in motd: txt = r.sub(r'line1=\"[^\"]*\"', 'line1=\"' + motd['line1'] + '\"', txt)
+    if 'line2' in motd:
+        line2 = motd['line2'].replace('{version}', ver)
+        txt = r.sub(r'line2=\"[^\"]*\"', 'line2=\"' + line2 + '\"', txt)
+    with open(mc, 'w') as f: f.write(txt)
+except: pass
+" 2>/dev/null || true
+
+    tmux new-session -ds "$SESSION_NAME" -c "$GAME_DIR" \
+        "java $JAVA_OPTS -jar $FABRIC_JAR nogui"
+    sleep 3
+    if is_running; then
+        info "服务器已启动 (PID: $(get_pid))"
+        # 同步出生点
+        local sx sy sz
+        sx=$(cfg server.spawn.x 2>/dev/null)
+        sy=$(cfg server.spawn.y 2>/dev/null)
+        sz=$(cfg server.spawn.z 2>/dev/null)
+        if [ -n "$sx" ] && [ -n "$sy" ] && [ -n "$sz" ]; then
+            local wait=0
+            while [ $wait -lt 60 ]; do
+                if grep -q "Done" "$GAME_DIR/logs/latest.log" 2>/dev/null; then break; fi
+                sleep 1; wait=$((wait + 1))
+            done
+            send_cmd "setworldspawn $sx $sy $sz"
+        fi
+    else
+        error "启动失败，请检查日志: $GAME_DIR/logs/latest.log"
+    fi
+}
+
+cmd_stop() {
+    if ! is_running; then
+        warn "服务器未在运行"; return 1
+    fi
+    info "正在关闭服务器 (${STOP_COUNTDOWN}秒倒计时)..."
+    send_cmd "say §c服务器将在${STOP_COUNTDOWN}秒后关闭..."
+    sleep "$STOP_COUNTDOWN"
+    send_cmd "stop"
+    if wait_stop 30; then
+        info "服务器已关闭"
+    else
+        error "服务器未能在30秒内关闭，强制终止..."
+        tmux kill-session -t "$SESSION_NAME" 2>/dev/null
+    fi
+}
+
+cmd_restart() {
+    if is_running; then cmd_stop; fi
+    sleep 2
+    cmd_start
+}
+
+cmd_status() {
+    echo -e "${CYAN}=== 服务器状态 ===${NC}"
+    if is_running; then
+        local pid
+        pid=$(get_pid)
+        info "状态: 运行中 (PID: $pid)"
+        ps -p "$pid" -o %cpu,%mem,etime --no-headers 2>/dev/null | awk '{printf "  CPU: %s%%  内存: %s%%  运行时间: %s\n", $1, $2, $3}'
+        local rss
+        rss=$(ps -p "$pid" -o rss --no-headers 2>/dev/null | awk '{printf "%.0f", $1/1024}')
+        [ -n "$rss" ] && echo "  Java 实际内存: ${rss}MB"
+    else
+        warn "状态: 未运行"
+    fi
+    [ -d "$GAME_DIR/world" ] && echo "  世界大小: $(du -sh "$GAME_DIR/world" 2>/dev/null | cut -f1)"
+    local mod_count
+    mod_count=$(find "$GAME_DIR/mods" -maxdepth 1 -name '*.jar' 2>/dev/null | wc -l)
+    echo "  已安装 Mod: ${mod_count} 个"
+    df -h "$GAME_DIR" 2>/dev/null | awk 'NR==2{printf "  磁盘: 已用 %s / 总计 %s (剩余 %s)\n", $3, $2, $4}'
+}
+
+cmd_console() {
+    if ! is_running; then
+        error "服务器未在运行"; exit 1
+    fi
+    info "附加到服务器控制台 (按 Ctrl+B 然后 D 退出)"
+    tmux attach -t "$SESSION_NAME"
+}

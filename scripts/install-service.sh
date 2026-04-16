@@ -1,30 +1,12 @@
 #!/bin/bash
 # 安装 MC 服务器 systemd 服务和 cron 定时重启
-# 所有参数从 config.json 读取，路径自动检测
 set -e
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-BASE_DIR="$(dirname "$SCRIPT_DIR")"
-CONFIG_FILE="$BASE_DIR/config.json"
+source "$SCRIPT_DIR/common.sh"
 
 if [ "$EUID" -ne 0 ]; then
     echo "请使用 sudo 运行此脚本"; exit 1
 fi
-
-if [ ! -f "$CONFIG_FILE" ]; then
-    echo "错误: 找不到 $CONFIG_FILE"; exit 1
-fi
-
-cfg() {
-    python3 -c "
-import json
-with open('$CONFIG_FILE') as f: c = json.load(f)
-keys = '$1'.split('.')
-v = c
-for k in keys: v = v[k]
-if isinstance(v, bool): print(str(v).lower())
-else: print(v)
-" 2>/dev/null
-}
 
 SERVER_USER=$(cfg server.user)
 SESSION_NAME=$(cfg server.session_name)

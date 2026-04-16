@@ -7,31 +7,13 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-BASE_DIR="$(dirname "$SCRIPT_DIR")"
-GAME_DIR="$BASE_DIR/GameFile"
+source "$SCRIPT_DIR/common.sh"
 MODS_DIR="$GAME_DIR/mods"
-CONFIG_FILE="$BASE_DIR/config.json"
 MC="$SCRIPT_DIR/mc.sh"
 UA="MC_Server_Upgrade/1.0"
 LAUNCHER_VERSION="1.0.3"
 
-RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'; CYAN='\033[0;36m'; NC='\033[0m'
-info()  { echo -e "${GREEN}[INFO]${NC} $1"; }
-warn()  { echo -e "${YELLOW}[WARN]${NC} $1"; }
-error() { echo -e "${RED}[ERROR]${NC} $1"; }
 step()  { echo -e "\n${CYAN}=== $1 ===${NC}"; }
-
-cfg() {
-    python3 -c "
-import json
-with open('$CONFIG_FILE') as f: c = json.load(f)
-keys = '$1'.split('.')
-v = c
-for k in keys: v = v[k]
-if isinstance(v, bool): print(str(v).lower())
-else: print(v)
-" 2>/dev/null
-}
 
 # ==================== 参数解析 ====================
 TARGET_MC_VERSION="${1:-}"

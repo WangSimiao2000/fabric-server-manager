@@ -1,18 +1,12 @@
 #!/bin/bash
 # 定时重启 + 冷备份脚本（由 cron 每天调用）
-# 警告时间等参数从 config.json 读取
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-BASE_DIR="$(dirname "$SCRIPT_DIR")"
-CONFIG_FILE="$BASE_DIR/config.json"
+source "$SCRIPT_DIR/common.sh"
 MC="$SCRIPT_DIR/mc.sh"
 
 log() { echo "[$(date '+%Y-%m-%d %H:%M:%S')] $1"; }
 
-WARN_MIN=$(python3 -c "
-import json
-with open('$CONFIG_FILE') as f: c = json.load(f)
-print(c['restart']['warn_minutes'])
-" 2>/dev/null || echo 5)
+WARN_MIN=$(cfg restart.warn_minutes 2>/dev/null || echo 5)
 
 log "=== 定时重启开始 (警告时间: ${WARN_MIN}分钟) ==="
 
