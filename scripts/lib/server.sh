@@ -147,6 +147,9 @@ cmd_restart() {
 
 cmd_status() {
     echo -e "${CYAN}=== 服务器状态 ===${NC}"
+    local mc_ver
+    mc_ver=$(echo "$FABRIC_JAR" | grep -oP 'mc\.\K[0-9]+\.[0-9]+(\.[0-9]+)?' )
+    [ -n "$mc_ver" ] && echo "  版本: Minecraft $mc_ver (Fabric)"
     if is_running; then
         local pid
         pid=$(get_pid)
