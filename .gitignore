@@ -3,6 +3,7 @@ GameFile/world/
 GameFile/EasyAuth/
 GameFile/logs/
 GameFile/crash-reports/
+GameFile/server.properties
 
 # ===== 二进制 / 大文件 =====
 GameFile/mods/*.jar
