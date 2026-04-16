@@ -28,7 +28,8 @@ with open('$CONFIG_FILE') as f: c = json.load(f)
 keys = '$1'.split('.')
 v = c
 for k in keys: v = v[k]
-print(v)
+if isinstance(v, bool): print(str(v).lower())
+else: print(v)
 " 2>/dev/null
 }
 
@@ -73,10 +74,10 @@ if [ -z "$TARGET_MC_VERSION" ]; then
 import json, sys, urllib.request
 
 ua = '$UA'
-mod_ids = '''$(printf '%s\n' "${mod_ids[@]}")'''.strip().split('\n')
-mod_names = '''$(printf '%s\n' "${mod_names[@]}")'''.strip().split('\n')
+mod_ids = '''$(printf '%s\n' "${mod_ids[@]+"${mod_ids[@]}"}")'''.strip().split('\n')
+mod_names = '''$(printf '%s\n' "${mod_names[@]+"${mod_names[@]}"}")'''.strip().split('\n')
 current = '$CURRENT_MC'
-unknown = '''$(printf '%s\n' "${unknown_mods[@]}")'''.strip().split('\n')
+unknown = '''$(printf '%s\n' "${unknown_mods[@]+"${unknown_mods[@]}"}")'''.strip().split('\n')
 unknown = [u for u in unknown if u]
 
 # 建立 project_id -> mod名称 的映射（通过索引对应）
@@ -174,13 +175,13 @@ fi
 # ==================== 1. 检查 Fabric 支持 ====================
 step "1/7 检查 Fabric 对 MC $TARGET_MC_VERSION 的支持"
 
-LOADER_VERSION=$(curl -s "https://meta.fabricmc.net/v2/versions/loader/$TARGET_MC_VERSION" -H "User-Agent: $UA" \
-    | python3 -c "
+loader_json=$(curl -s "https://meta.fabricmc.net/v2/versions/loader/$TARGET_MC_VERSION" -H "User-Agent: $UA" || true)
+LOADER_VERSION=$(echo "$loader_json" | python3 -c "
 import json,sys
 d = json.load(sys.stdin)
 stable = [v for v in d if v['loader']['stable']]
 if stable: print(stable[0]['loader']['version'])
-" 2>/dev/null)
+" 2>/dev/null || true)
 
 if [ -z "$LOADER_VERSION" ]; then
     error "Fabric 尚不支持 MC $TARGET_MC_VERSION"
@@ -250,11 +251,11 @@ echo ""
 info "兼容 MC $TARGET_MC_VERSION: ${#MODS_OK[@]} 个 Mod"
 if [ ${#MODS_FAIL[@]} -gt 0 ]; then
     warn "不兼容 MC $TARGET_MC_VERSION: ${#MODS_FAIL[@]} 个 Mod"
-    for m in "${MODS_FAIL[@]}"; do echo "  ✗ $m"; done
+    for m in "${MODS_FAIL[@]+"${MODS_FAIL[@]}"}"; do echo "  ✗ $m"; done
 fi
 if [ ${#MODS_UNKNOWN[@]} -gt 0 ]; then
     warn "无法识别 (不在 Modrinth): ${#MODS_UNKNOWN[@]} 个 Mod"
-    for m in "${MODS_UNKNOWN[@]}"; do echo "  ? $m"; done
+    for m in "${MODS_UNKNOWN[@]+"${MODS_UNKNOWN[@]}"}"; do echo "  ? $m"; done
 fi
 
 if [ ${#MODS_FAIL[@]} -gt 0 ]; then
@@ -433,9 +434,8 @@ if [ -n "$dep_ids" ]; then
         fi
 
         # 获取依赖 mod 信息
-        dep_info=$(curl -s "https://api.modrinth.com/v2/project/$dep_id" -H "User-Agent: $UA" \
-            | python3 -c "import json,sys; d=json.load(sys.stdin); print(d.get('title',''), d.get('slug',''))" 2>/dev/null || true)
-        dep_title=$(echo "$dep_info" | cut -d' ' -f1)
+        dep_title=$(curl -s "https://api.modrinth.com/v2/project/$dep_id" -H "User-Agent: $UA" \
+            | python3 -c "import json,sys; d=json.load(sys.stdin); print(d.get('slug', d.get('title','unknown')))" 2>/dev/null || true)
 
         # 获取对应版本
         dep_ver=$(curl -s "https://api.modrinth.com/v2/project/$dep_id/version?game_versions=%5B%22$TARGET_MC_VERSION%22%5D&loaders=%5B%22fabric%22%5D" \

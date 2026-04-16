@@ -21,8 +21,9 @@ with open('$CONFIG_FILE') as f: c = json.load(f)
 keys = '$1'.split('.')
 v = c
 for k in keys: v = v[k]
-print(v)
-"
+if isinstance(v, bool): print(str(v).lower())
+else: print(v)
+" 2>/dev/null
 }
 
 SERVER_USER=$(cfg server.user)

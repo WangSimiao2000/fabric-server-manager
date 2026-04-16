@@ -147,7 +147,7 @@ preflight_check() {
 # ==================== 辅助函数 (tmux) ====================
 is_running() {
     tmux has-session -t "$SESSION_NAME" 2>/dev/null && return 0
-    pgrep -x java &>/dev/null
+    pgrep -f "$FABRIC_JAR" &>/dev/null
 }
 
 send_cmd() {
@@ -156,7 +156,7 @@ send_cmd() {
 
 get_pid() {
     local pid
-    pid=$(pgrep -x java | head -1)
+    pid=$(pgrep -f "$FABRIC_JAR" | head -1)
     if [ -z "$pid" ]; then
         pid=$(tmux list-panes -t "$SESSION_NAME" -F '#{pane_pid}' 2>/dev/null | head -1)
     fi
@@ -222,13 +222,17 @@ except: pass
     sleep 3
     if is_running; then
         info "服务器已启动 (PID: $(get_pid))"
-        # 同步出生点
+        # 同步出生点（等待服务器完全启动）
         local sx sy sz
         sx=$(cfg server.spawn.x 2>/dev/null)
         sy=$(cfg server.spawn.y 2>/dev/null)
         sz=$(cfg server.spawn.z 2>/dev/null)
         if [ -n "$sx" ] && [ -n "$sy" ] && [ -n "$sz" ]; then
-            sleep 10
+            local wait=0
+            while [ $wait -lt 60 ]; do
+                if grep -q "Done" "$GAME_DIR/logs/latest.log" 2>/dev/null; then break; fi
+                sleep 1; wait=$((wait + 1))
+            done
             send_cmd "setworldspawn $sx $sy $sz"
         fi
     else

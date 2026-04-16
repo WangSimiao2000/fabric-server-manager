@@ -14,6 +14,7 @@ GameFile/fabric-server-mc.*.jar
 
 # ===== 备份 =====
 GameFile/backup/
+GameFile/mods.disabled/
 backups/
 
 # ===== 运行时生成的 JSON =====
