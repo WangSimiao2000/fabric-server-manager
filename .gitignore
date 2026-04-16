@@ -1,0 +1,28 @@
+# ===== 运行时数据 =====
+GameFile/world/
+GameFile/EasyAuth/
+GameFile/logs/
+GameFile/crash-reports/
+
+# ===== 二进制 / 大文件 =====
+GameFile/mods/*.jar
+GameFile/mods/luckperms/
+GameFile/libraries/
+GameFile/versions/
+GameFile/.fabric/
+GameFile/fabric-server-mc.*.jar
+
+# ===== 备份 =====
+GameFile/backup/
+backups/
+
+# ===== 运行时生成的 JSON =====
+GameFile/usercache.json
+GameFile/ops.json
+GameFile/banned-players.json
+GameFile/banned-ips.json
+GameFile/whitelist.json
+
+# ===== 缓存 / 临时文件 =====
+.cache/
+GameFile/config/spark/tmp-client/
