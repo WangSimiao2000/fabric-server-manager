@@ -183,11 +183,54 @@ cmd_start() {
         error "端口 ${port} 已被占用:"; ss -tlnp | grep ":${port} "; return 1
     fi
     info "启动服务器..."
+
+    # 同步 config.json 中的 motd 到 server.properties 和 MiniMOTD
+    python3 -c "
+import json, re
+with open('$CONFIG_FILE') as f: c = json.load(f)
+motd = c['server'].get('motd', {})
+jar = c['server']['fabric_jar']
+ver = re.search(r'mc\.([0-9]+\.[0-9]+(?:\.[0-9]+)?)', jar)
+ver = ver.group(1) if ver else ''
+
+# server.properties motd
+sp = '$GAME_DIR/server.properties'
+with open(sp) as f: lines = f.readlines()
+with open(sp, 'w') as f:
+    for l in lines:
+        if l.startswith('motd='):
+            f.write('motd=' + motd.get('server_list', '') + '\n')
+        else:
+            f.write(l)
+
+# MiniMOTD
+mc = '$GAME_DIR/config/MiniMOTD/main.conf'
+try:
+    with open(mc) as f: txt = f.read()
+    import re as r
+    if 'line1' in motd:
+        txt = r.sub(r'line1=\"[^\"]*\"', 'line1=\"' + motd['line1'] + '\"', txt)
+    if 'line2' in motd:
+        line2 = motd['line2'].replace('{version}', ver)
+        txt = r.sub(r'line2=\"[^\"]*\"', 'line2=\"' + line2 + '\"', txt)
+    with open(mc, 'w') as f: f.write(txt)
+except: pass
+" 2>/dev/null || true
+
     tmux new-session -ds "$SESSION_NAME" -c "$GAME_DIR" \
         "java $JAVA_OPTS -jar $FABRIC_JAR nogui"
     sleep 3
     if is_running; then
         info "服务器已启动 (PID: $(get_pid))"
+        # 同步出生点
+        local sx sy sz
+        sx=$(cfg server.spawn.x 2>/dev/null)
+        sy=$(cfg server.spawn.y 2>/dev/null)
+        sz=$(cfg server.spawn.z 2>/dev/null)
+        if [ -n "$sx" ] && [ -n "$sy" ] && [ -n "$sz" ]; then
+            sleep 10
+            send_cmd "setworldspawn $sx $sy $sz"
+        fi
     else
         error "启动失败，请检查日志: $GAME_DIR/logs/latest.log"
     fi

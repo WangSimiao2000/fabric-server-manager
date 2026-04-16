@@ -484,12 +484,7 @@ with open('$CONFIG_FILE', 'w') as f: json.dump(c, f, indent=4, ensure_ascii=Fals
 print('config.json 已更新')
 "
 
-# 更新 MiniMOTD 中的版本号
-MOTD_CONF="$GAME_DIR/config/MiniMOTD/main.conf"
-if [ -f "$MOTD_CONF" ]; then
-    sed -i "s/$CURRENT_MC/$TARGET_MC_VERSION/g" "$MOTD_CONF"
-    info "MiniMOTD 版本已更新为 $TARGET_MC_VERSION"
-fi
+# MiniMOTD 版本号将在 mc.sh start 时从 config.json 自动同步
 
 # 更新 systemd 服务文件
 if [ -f /etc/systemd/system/mc-server.service ]; then
