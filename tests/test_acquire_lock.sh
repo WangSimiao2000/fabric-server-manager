@@ -48,4 +48,17 @@ source "$SCRIPT_DIR/common.sh"
 (acquire_lock) 2>/dev/null
 assert_ok "锁文件被创建" test -f "$LOCK_FILE"
 
+suite "acquire_lock 幂等性"
+# 同一进程中连续调用两次不应死锁
+result=$( (
+    BASE_DIR="$TMP_DIR"
+    LOCK_FILE="$TMP_DIR/.mc.lock"
+    _MC_LOCK_HELD=0
+    source "$SCRIPT_DIR/common.sh"
+    acquire_lock
+    acquire_lock  # 第二次应直接跳过
+    echo "OK"
+) 2>&1)
+assert_contains "$result" "OK" "连续两次 acquire_lock 不死锁"
+
 summary

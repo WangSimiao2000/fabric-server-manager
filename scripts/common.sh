@@ -18,14 +18,17 @@ error() { echo -e "${RED}[ERROR]${NC} $1"; }
 
 # 并发锁（flock），防止多实例同时操作
 LOCK_FILE="${BASE_DIR}/.mc.lock"
-LOCK_FD=200
+_MC_LOCK_HELD=0
 
 acquire_lock() {
+    # 幂等：已持有锁时跳过（避免子进程重复获取导致短暂释放）
+    [ "$_MC_LOCK_HELD" -eq 1 ] && return 0
     exec 200>"$LOCK_FILE"
     if ! flock -n 200; then
         error "另一个 mc.sh 实例正在运行，请稍后再试"
         exit 1
     fi
+    export _MC_LOCK_HELD=1
 }
 
 # 读取 config.json（通过 sys.argv 传参，避免注入）

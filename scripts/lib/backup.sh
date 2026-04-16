@@ -53,8 +53,8 @@ backup_create() {
         trap '_restore_save' RETURN INT TERM
     fi
 
-    local exclude_args=""
-    exclude_args=$(python3 -c "
+    local exclude_args=()
+    mapfile -t exclude_args < <(python3 -c "
 import json, sys
 with open(sys.argv[1]) as f: c = json.load(f)
 for e in c['backup']['exclude']:
@@ -64,7 +64,7 @@ for e in c['backup']['exclude']:
     info "创建备份: $filename"
     tar -czf "$BACKUP_DIR/$filename" \
         -C "$GAME_DIR" \
-        $exclude_args \
+        "${exclude_args[@]}" \
         world server.properties ops.json banned-players.json banned-ips.json \
         whitelist.json usercache.json mods config EasyAuth 2>&1 | grep -v 'file changed as we read it' || true
     if [ ! -s "$BACKUP_DIR/$filename" ]; then

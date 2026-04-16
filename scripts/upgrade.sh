@@ -194,6 +194,7 @@ MOD_CACHE=$(mktemp)
 SNAPSHOT_DIR=""  # 设置后 trap 会自动回滚
 _upgrade_cleanup() {
     local exit_code=$?
+    set +e  # 回滚过程中不能因命令失败而中断
     rm -f "$MOD_CACHE"
     if [ $exit_code -ne 0 ] && [ -n "$SNAPSHOT_DIR" ] && [ -d "$SNAPSHOT_DIR" ]; then
         echo ""
