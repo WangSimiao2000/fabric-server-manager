@@ -24,7 +24,8 @@ with open('$CONFIG_FILE') as f: c = json.load(f)
 keys = '$1'.split('.')
 v = c
 for k in keys: v = v[k]
-print(v)
+if isinstance(v, bool): print(str(v).lower())
+else: print(v)
 " 2>/dev/null
 }
 
@@ -114,7 +115,7 @@ preflight_check() {
     # EasyAuth
     if ls "$GAME_DIR/mods"/easyauth-*.jar &>/dev/null; then
         info "EasyAuth 登录认证 mod 已安装 ✓"
-    elif [ "$REQUIRE_EASYAUTH" = "True" ] || [ "$REQUIRE_EASYAUTH" = "true" ]; then
+    elif [ "$REQUIRE_EASYAUTH" = "true" ]; then
         warn "EasyAuth 未安装！离线模式下任何人可冒充其他玩家"; ((warnings++))
         warn "运行: $SCRIPT_DIR/setup-easyauth.sh 安装"
     fi
@@ -251,10 +252,11 @@ cmd_console() {
 # ==================== 备份管理 ====================
 cmd_backup() {
     case "${1:-help}" in
-        create) backup_create ;;
-        list)   backup_list ;;
-        clean)  backup_clean "${2:-$BACKUP_KEEP_DAYS}" ;;
-        *)      echo "用法: mc.sh backup <create|list|clean [天数]>" ;;
+        create)  backup_create ;;
+        list)    backup_list ;;
+        clean)   backup_clean "${2:-$BACKUP_KEEP_DAYS}" ;;
+        restore) backup_restore "$2" ;;
+        *)       echo "用法: mc.sh backup <create|list|clean [天数]|restore [文件名]>" ;;
     esac
 }
 
@@ -307,11 +309,13 @@ for e in c['backup']['exclude']:
 " 2>/dev/null)
 
     info "创建备份: $filename"
-    tar -czf "$BACKUP_DIR/$filename" \
+    if ! tar -czf "$BACKUP_DIR/$filename" \
         -C "$GAME_DIR" \
         $exclude_args \
         world server.properties ops.json banned-players.json banned-ips.json \
-        whitelist.json usercache.json mods config 2>/dev/null
+        whitelist.json usercache.json mods config EasyAuth 2>&1 | grep -v 'file changed as we read it'; then
+        error "备份可能不完整，请检查: $BACKUP_DIR/$filename"
+    fi
 
     if [ "$running" = true ]; then
         send_cmd "save-on"
@@ -361,6 +365,80 @@ backup_clean() {
     find "$BACKUP_DIR" -name 'mc-backup-*.tar.gz' -mtime +"$days" -print0 2>/dev/null \
         | xargs -0 ls -t 2>/dev/null | tail -"$to_delete" | xargs rm -f
     info "已删除 $to_delete 个旧备份 (保留 $(( total - to_delete )) 份)"
+}
+
+backup_restore() {
+    local target="$1"
+
+    # 如果没指定文件名，列出可选备份
+    if [ -z "$target" ]; then
+        echo -e "${CYAN}=== 选择要恢复的备份 ===${NC}"
+        local backups
+        backups=$(ls -t "$BACKUP_DIR"/mc-backup-*.tar.gz 2>/dev/null)
+        if [ -z "$backups" ]; then
+            warn "暂无备份"; return 1
+        fi
+        local i=1
+        while IFS= read -r f; do
+            printf "  %d) %s (%s)\n" "$i" "$(basename "$f")" "$(du -h "$f" | cut -f1)"
+            ((i++))
+        done <<< "$backups"
+        echo ""
+        read -rp "选择编号 (q 取消): " choice
+        [ "$choice" = "q" ] && return 0
+        target=$(echo "$backups" | sed -n "${choice}p")
+        if [ -z "$target" ]; then
+            error "无效选择"; return 1
+        fi
+        target=$(basename "$target")
+    fi
+
+    # 补全路径
+    local archive="$BACKUP_DIR/$target"
+    [ ! -f "$archive" ] && archive="$target"
+    if [ ! -f "$archive" ]; then
+        error "备份文件不存在: $target"; return 1
+    fi
+
+    echo -e "${YELLOW}[!] 即将从备份恢复以下内容:${NC}"
+    tar -tzf "$archive" 2>/dev/null | head -20
+    echo "  ..."
+    echo ""
+    warn "这将覆盖当前的: world、mods、config、server.properties 等"
+    warn "当前数据会先自动备份一份"
+    read -rp "确认恢复？(y/n) " answer
+    [ "$answer" != "y" ] && { info "已取消"; return 0; }
+
+    # 关闭服务器
+    if is_running; then
+        info "关闭服务器..."
+        cmd_stop
+        sleep 3
+    fi
+
+    # 先备份当前状态
+    info "备份当前状态..."
+    backup_create
+
+    # 恢复
+    info "从备份恢复: $(basename "$archive")"
+    tar -xzf "$archive" -C "$GAME_DIR"
+    info "恢复完成"
+
+    # 重新加载配置并检查 jar 是否存在
+    load_config
+    if [ ! -f "$GAME_DIR/$FABRIC_JAR" ]; then
+        warn "备份中的 Fabric jar ($FABRIC_JAR) 不存在于当前 GameFile 目录"
+        warn "可能需要手动下载或运行 mc.sh upgrade 修复"
+    fi
+
+    # 清理 Fabric 缓存
+    rm -rf "$GAME_DIR/.fabric"
+
+    # 启动
+    info "启动服务器..."
+    cmd_start
+    info "已从备份 $(basename "$archive") 恢复"
 }
 
 # ==================== 监控 ====================
@@ -532,6 +610,90 @@ logs_crash() {
     fi
 }
 
+# ==================== 版本回退 ====================
+cmd_rollback() {
+    local BACKUP_DIR="$BASE_DIR/backups"
+    local snapshots
+    snapshots=$(ls -dt "$BACKUP_DIR"/pre-upgrade-* 2>/dev/null)
+
+    if [ -z "$snapshots" ]; then
+        error "没有可用的升级快照"; return 1
+    fi
+
+    echo -e "${CYAN}=== 可用的升级快照 ===${NC}"
+    local i=1
+    while IFS= read -r snap; do
+        local ver
+        ver=$(cat "$snap/mc_version.txt" 2>/dev/null || echo "未知")
+        local mod_count
+        mod_count=$(ls "$snap/mods"/*.jar 2>/dev/null | wc -l)
+        printf "  %d) %s (MC %s, %d 个 Mod)\n" "$i" "$(basename "$snap")" "$ver" "$mod_count"
+        ((i++))
+    done <<< "$snapshots"
+
+    echo ""
+    read -rp "选择要回退的快照编号 (输入 q 取消): " choice
+    [ "$choice" = "q" ] && return 0
+
+    local target
+    target=$(echo "$snapshots" | sed -n "${choice}p")
+    if [ -z "$target" ] || [ ! -d "$target" ]; then
+        error "无效选择"; return 1
+    fi
+
+    local old_ver
+    old_ver=$(cat "$target/mc_version.txt" 2>/dev/null || echo "未知")
+    warn "将回退到 MC $old_ver ($(basename "$target"))"
+    warn "当前的 Fabric jar 和 Mods 将被替换"
+    read -rp "确认回退？(y/n) " answer
+    [ "$answer" != "y" ] && { info "已取消"; return 0; }
+
+    # 关闭服务器
+    if is_running; then
+        info "关闭服务器..."
+        cmd_stop
+        sleep 3
+    fi
+
+    # 还原 Fabric jar
+    local old_jar
+    old_jar=$(ls "$target"/fabric-server-mc.*.jar 2>/dev/null | head -1)
+    if [ -n "$old_jar" ]; then
+        rm -f "$GAME_DIR"/fabric-server-mc.*.jar
+        cp "$old_jar" "$GAME_DIR/"
+        info "已还原 Fabric 服务端: $(basename "$old_jar")"
+    fi
+
+    # 还原 Mods
+    rm -rf "$GAME_DIR/mods"
+    cp -r "$target/mods" "$GAME_DIR/mods"
+    info "已还原 ${old_ver} 版本的 Mods"
+
+    # 还原 mods.disabled（如果有的话，删掉升级产生的）
+    rm -rf "$GAME_DIR/mods.disabled"
+
+    # 还原 config.json
+    cp "$target/config.json" "$CONFIG_FILE"
+    info "已还原 config.json"
+    load_config
+
+    # 清理 Fabric 缓存
+    rm -rf "$GAME_DIR/.fabric"
+    info "已清理 Fabric 缓存"
+
+    # 更新 systemd
+    if [ -f /etc/systemd/system/mc-server.service ]; then
+        sudo bash "$SCRIPT_DIR/install-service.sh"
+    fi
+
+    # 启动
+    info "启动服务器..."
+    cmd_start
+
+    echo ""
+    info "已回退到 MC $old_ver"
+}
+
 # ==================== 主入口 ====================
 show_help() {
     cat << 'EOF'
@@ -552,6 +714,7 @@ MickeyMiao's Minecraft Server 管理工具
   backup create      创建冷备份
   backup list        列出所有备份
   backup clean [天]  清理旧备份
+  backup restore     从冷备份一键恢复
 
 玩家管理:
   player list                    列出所有玩家
@@ -563,6 +726,10 @@ MickeyMiao's Minecraft Server 管理工具
 Mod 管理:
   mods list          列出已安装 Mod
   mods check         Mod 健康检查
+
+版本升级:
+  upgrade <版本>     升级 MC 版本 (如: mc.sh upgrade 1.21.6)
+  rollback           回退到升级前的版本
 
 日志:
   logs tail          实时查看日志
@@ -597,6 +764,8 @@ case "${1:-help}" in
         esac
         cmd_player "$@" ;;
     mods)    shift; cmd_mods "$@" ;;
+    upgrade)  shift; bash "$SCRIPT_DIR/upgrade.sh" "$@" ;;
+    rollback) cmd_rollback ;;
     logs)    shift; cmd_logs "$@" ;;
     help|*)  show_help ;;
 esac

@@ -29,8 +29,10 @@ SERVER_USER=$(cfg server.user)
 SESSION_NAME=$(cfg server.session_name)
 FABRIC_JAR=$(cfg server.fabric_jar)
 JAVA_OPTS=$(cfg server.java_opts)
+STOP_COUNTDOWN=$(cfg server.stop_countdown)
 CRON_SCHEDULE=$(cfg restart.cron)
 GAME_DIR="$BASE_DIR/GameFile"
+MC_VERSION=$(echo "$FABRIC_JAR" | grep -oP 'mc\.\K[0-9]+\.[0-9]+(\.[0-9]+)?')
 
 # 创建用户（如果不存在）
 if ! id -u "$SERVER_USER" &>/dev/null; then
@@ -42,7 +44,7 @@ fi
 echo "生成 systemd 服务文件..."
 cat > /etc/systemd/system/mc-server.service << EOF
 [Unit]
-Description=Minecraft Fabric Server (1.21.5)
+Description=Minecraft Fabric Server ($MC_VERSION)
 After=network.target
 
 [Service]
@@ -50,8 +52,8 @@ Type=forking
 User=$SERVER_USER
 WorkingDirectory=$GAME_DIR
 ExecStart=/usr/bin/tmux new-session -ds $SESSION_NAME -c $GAME_DIR "java $JAVA_OPTS -jar $FABRIC_JAR nogui"
-ExecStop=/usr/bin/tmux send-keys -t $SESSION_NAME "say §c服务器将在10秒后关闭..." Enter
-ExecStop=/bin/sleep 10
+ExecStop=/usr/bin/tmux send-keys -t $SESSION_NAME "say §c服务器将在${STOP_COUNTDOWN}秒后关闭..." Enter
+ExecStop=/bin/sleep $STOP_COUNTDOWN
 ExecStop=/usr/bin/tmux send-keys -t $SESSION_NAME "stop" Enter
 ExecStop=/bin/sleep 15
 Restart=on-failure
