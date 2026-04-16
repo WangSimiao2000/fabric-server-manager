@@ -25,7 +25,7 @@ echo "=== 安装系统依赖 ==="
 
 # Java
 if command -v java &>/dev/null; then
-    java_ver=$(java -version 2>&1 | head -1 | grep -oP '"\K[^"]+' | cut -d. -f1)
+    java_ver=$(java -version 2>&1 | head -1 | grep -oP '"\K[^"]+' | head -1 | cut -d. -f1)
     if [ "$java_ver" -ge "$MIN_JAVA_VERSION" ] 2>/dev/null; then
         info "Java $java_ver 已安装"
     else
