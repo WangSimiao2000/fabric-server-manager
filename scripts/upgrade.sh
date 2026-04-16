@@ -1,6 +1,6 @@
 #!/bin/bash
 # ============================================================
-# MC_Server 版本升级脚本
+# Fabric Server Manager - 版本升级脚本
 # 升级 Minecraft 版本、Fabric Loader 和所有 Modrinth Mods
 # 地图数据完整保留，升级前自动全量备份
 # ============================================================
@@ -10,7 +10,7 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 source "$SCRIPT_DIR/common.sh"
 MODS_DIR="$GAME_DIR/mods"
 MC="$SCRIPT_DIR/mc.sh"
-UA="MC_Server_Upgrade/1.0"
+UA="FabricServerManager/1.0"
 LAUNCHER_VERSION="1.0.3"
 
 step()  { echo -e "\n${CYAN}=== $1 ===${NC}"; }

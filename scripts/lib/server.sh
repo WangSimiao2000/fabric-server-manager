@@ -1,6 +1,8 @@
 #!/bin/bash
 # 服务器启停、状态、控制台、预检查
 
+MIN_JAVA_VERSION=21
+
 preflight_check() {
     local errors=0 warnings=0
 
@@ -15,10 +17,10 @@ preflight_check() {
     if command -v java &>/dev/null; then
         local java_ver
         java_ver=$(java -version 2>&1 | head -1 | grep -oP '"\K[^"]+' | head -1 | cut -d. -f1)
-        if [ "$java_ver" -ge 21 ] 2>/dev/null; then
+        if [ "$java_ver" -ge "$MIN_JAVA_VERSION" ] 2>/dev/null; then
             info "Java 版本: $java_ver ✓"
         else
-            error "Java 版本 $java_ver < 21"; ((errors++))
+            error "Java 版本 $java_ver < $MIN_JAVA_VERSION"; ((errors++))
         fi
     else
         error "Java 未安装"; ((errors++))

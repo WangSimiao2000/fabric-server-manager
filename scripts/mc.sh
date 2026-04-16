@@ -1,6 +1,6 @@
 #!/bin/bash
 # ============================================================
-# MickeyMiao's Minecraft Server 管理工具
+# Fabric Server Manager - Minecraft 服务器管理工具
 # 统一入口 - 所有功能通过子命令调用
 # ============================================================
 
@@ -18,7 +18,7 @@ load_config
 # ==================== 帮助 ====================
 show_help() {
     cat << 'EOF'
-MickeyMiao's Minecraft Server 管理工具
+Fabric Server Manager - Minecraft 服务器管理工具
 
 用法: mc.sh <命令> [参数]
 

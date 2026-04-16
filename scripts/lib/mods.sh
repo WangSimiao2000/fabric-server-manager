@@ -66,7 +66,7 @@ logs_tail() {
 logs_search() {
     [ -z "$1" ] && { echo "用法: mc.sh logs search <关键词>"; return; }
     info "搜索日志: $*"
-    grep -rni --color=auto "$*" "$GAME_DIR/logs/latest.log" 2>/dev/null | tail -50
+    grep -ni --color=auto "$*" "$GAME_DIR/logs/latest.log" 2>/dev/null | tail -50
     echo "---"
     echo "共 $(grep -ci "$*" "$GAME_DIR/logs/latest.log" 2>/dev/null || echo 0) 条匹配"
 }

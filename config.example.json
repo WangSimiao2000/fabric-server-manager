@@ -1,0 +1,38 @@
+{
+    "server": {
+        "user": "minecraft",
+        "session_name": "mc",
+        "fabric_jar": "fabric-server-mc.1.21.11-loader.0.19.2-launcher.1.0.3.jar",
+        "java_opts": "-Xms4G -Xmx6G",
+        "port": 25565,
+        "stop_countdown": 10,
+        "spawn": {
+            "x": 0,
+            "y": 64,
+            "z": 0
+        },
+        "motd": {
+            "server_list": "My Minecraft Server",
+            "line1": "<Gold>Welcome to my <Yellow><bold>Fabric<white> Server!",
+            "line2": "<Rainbow>Minecraft<Green>{version} <Gray>| <Aqua>Survival"
+        }
+    },
+    "backup": {
+        "keep_days": 7,
+        "min_keep": 3,
+        "rsync_dest": "",
+        "exclude": [
+            "./logs",
+            "./crash-reports",
+            "./.fabric/remappedJars"
+        ]
+    },
+    "restart": {
+        "cron": "0 5 * * *",
+        "warn_minutes": 5
+    },
+    "check": {
+        "disk_warn_mb": 5120,
+        "require_easyauth": true
+    }
+}

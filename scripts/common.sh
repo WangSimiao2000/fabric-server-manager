@@ -1,6 +1,6 @@
 #!/bin/bash
 # ============================================================
-# 公共函数库 - 所有脚本 source 此文件
+# Fabric Server Manager - 公共函数库
 # ============================================================
 
 # 路径（如果调用者未设置）
@@ -58,7 +58,7 @@ send_cmd() {
 
 get_pid() {
     local pid
-    # tmux pane_pid points directly to the java child process
+    # tmux 直接启动 java，pane_pid 即为 Java 进程 PID
     pid=$(tmux list-panes -t "$SESSION_NAME" -F '#{pane_pid}' 2>/dev/null | head -1)
     if [ -z "$pid" ]; then
         pid=$(pgrep -f "java.*$FABRIC_JAR" | head -1)

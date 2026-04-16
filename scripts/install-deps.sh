@@ -1,11 +1,13 @@
 #!/bin/bash
-# 安装 MC 服务器运行所需的系统依赖
+# Fabric Server Manager - 安装系统依赖
 set -e
 
 RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'; NC='\033[0m'
 info()  { echo -e "${GREEN}[✓]${NC} $1"; }
 warn()  { echo -e "${YELLOW}[!]${NC} $1"; }
 error() { echo -e "${RED}[✗]${NC} $1"; }
+
+MIN_JAVA_VERSION=21
 
 install_pkg() {
     if command -v apt &>/dev/null; then
@@ -21,18 +23,18 @@ install_pkg() {
 
 echo "=== 安装系统依赖 ==="
 
-# Java 21+
+# Java
 if command -v java &>/dev/null; then
     java_ver=$(java -version 2>&1 | head -1 | grep -oP '"\K[^"]+' | cut -d. -f1)
-    if [ "$java_ver" -ge 21 ] 2>/dev/null; then
+    if [ "$java_ver" -ge "$MIN_JAVA_VERSION" ] 2>/dev/null; then
         info "Java $java_ver 已安装"
     else
-        warn "Java 版本 $java_ver < 21，尝试安装 Java 21..."
-        install_pkg openjdk-21-jre-headless || install_pkg java-21-openjdk-headless
+        warn "Java 版本 $java_ver < $MIN_JAVA_VERSION，尝试安装..."
+        install_pkg "openjdk-${MIN_JAVA_VERSION}-jre-headless" || install_pkg "java-${MIN_JAVA_VERSION}-openjdk-headless"
     fi
 else
     warn "Java 未安装，尝试安装..."
-    install_pkg openjdk-21-jre-headless || install_pkg java-21-openjdk-headless
+    install_pkg "openjdk-${MIN_JAVA_VERSION}-jre-headless" || install_pkg "java-${MIN_JAVA_VERSION}-openjdk-headless"
 fi
 
 # tmux
@@ -51,7 +53,7 @@ else
     install_pkg python3
 fi
 
-# curl（EasyAuth 下载需要）
+# curl
 if command -v curl &>/dev/null || command -v wget &>/dev/null; then
     info "curl/wget 已安装"
 else
