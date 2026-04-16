@@ -72,7 +72,7 @@ ui_main() {
             *玩家*)       ui_player ;;
             *Mod*)        ui_mods ;;
             *日志*)       ui_logs ;;
-            *升级*)       clear; trap '' INT; bash "$SCRIPT_DIR/upgrade.sh"; trap - INT; read -rp "按回车返回..." ;;
+            *升级*)       clear; (bash "$SCRIPT_DIR/upgrade.sh") || true; read -rp "按回车返回..." ;;
             *回退*)       tui_confirm "确认回退到上一个版本？" && { clear; cmd_rollback; read -rp "按回车返回..."; } ;;
             *环境检查*)   tui_run preflight_check ;;
             *退出*)       break ;;
@@ -188,7 +188,7 @@ ui_logs() {
             "💥 查看崩溃报告" \
             "↩️  返回") || return
         case "$choice" in
-            *实时*)   clear; trap '' INT; logs_tail; trap - INT ;;
+            *实时*)   clear; (logs_tail) || true ;;
             *搜索*)
                 local keyword; keyword=$(tui_input "搜索关键词") || continue
                 [ -n "$keyword" ] && tui_run logs_search "$keyword" ;;
