@@ -28,16 +28,29 @@ esac
 MOCK
 chmod +x "$MOCK_MC"
 
-# 创建可测试的 restart 脚本副本，替换路径
+# 创建可测试的 restart 脚本副本，替换路径并 mock is_running
 RESTART_COPY="$TMP_DIR/mc-restart.sh"
 sed \
     -e "s|source \"\$SCRIPT_DIR/common.sh\"|source \"$SCRIPT_DIR/common.sh\"|" \
     -e "s|MC=.*|MC=\"$MOCK_MC\"|" \
     "$SCRIPT_DIR/mc-restart.sh" > "$RESTART_COPY"
 
+# 服务器运行中的版本：在 load_config 之后注入 is_running mock
+RESTART_RUNNING="$TMP_DIR/mc-restart-running.sh"
+sed '/^load_config$/a\
+_IS_RUNNING_COUNT=0\
+is_running() { ((_IS_RUNNING_COUNT++)); [ "$_IS_RUNNING_COUNT" -le 1 ]; }' \
+    "$RESTART_COPY" > "$RESTART_RUNNING"
+
+# 服务器未运行的版本
+RESTART_STOPPED="$TMP_DIR/mc-restart-stopped.sh"
+sed '/^load_config$/a\
+is_running() { return 1; }' \
+    "$RESTART_COPY" > "$RESTART_STOPPED"
+
 suite "mc-restart.sh 全流程调用顺序"
 export BASE_DIR="$TMP_DIR" CONFIG_FILE CALL_LOG
-(bash "$RESTART_COPY") > /dev/null 2>&1 || true
+(bash "$RESTART_RUNNING") > /dev/null 2>&1 || true
 calls=$(cat "$CALL_LOG" 2>/dev/null)
 assert_contains "$calls" "stop" "调用了 stop"
 assert_contains "$calls" "backup create" "调用了 backup create"
@@ -55,13 +68,8 @@ suite "mc-restart.sh 锁传递给子进程"
 assert_contains "$calls" "LOCK=1" "子进程收到 _MC_LOCK_HELD=1"
 
 suite "mc-restart.sh 服务器未运行时跳过关服"
-cat > "$MOCK_MC" << 'MOCK'
-#!/bin/bash
-echo "$@" >> "$CALL_LOG"
-case "$1" in status) echo "已停止" ;; esac
-MOCK
 rm -f "$CALL_LOG"
-(bash "$RESTART_COPY") > /dev/null 2>&1 || true
+(bash "$RESTART_STOPPED") > /dev/null 2>&1 || true
 calls=$(cat "$CALL_LOG" 2>/dev/null)
 assert_fail "未运行时不调用 stop" grep -q "^stop" "$CALL_LOG"
 assert_contains "$calls" "backup create" "未运行时仍备份"
