@@ -8,6 +8,8 @@ log() { echo "[$(date '+%Y-%m-%d %H:%M:%S')] $1"; }
 
 # 加锁防止并发
 acquire_lock
+# 让子进程（mc.sh）跳过锁获取，因为本进程已持有锁
+export _MC_LOCK_HELD=1
 
 WARN_MIN=$(cfg restart.warn_minutes 2>/dev/null || echo 5)
 

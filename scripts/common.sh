@@ -18,10 +18,10 @@ error() { echo -e "${RED}[ERROR]${NC} $1"; }
 
 # 并发锁（flock），防止多实例同时操作
 LOCK_FILE="${BASE_DIR}/.mc.lock"
-_MC_LOCK_HELD=0
+_MC_LOCK_HELD="${_MC_LOCK_HELD:-0}"
 
 acquire_lock() {
-    # 幂等：已持有锁时跳过（避免子进程重复获取导致短暂释放）
+    # 幂等：已持有锁时跳过（父进程通过 export _MC_LOCK_HELD=1 传递）
     [ "$_MC_LOCK_HELD" -eq 1 ] && return 0
     exec 200>"$LOCK_FILE"
     if ! flock -n 200; then
