@@ -42,7 +42,7 @@
 | python3 | 3.6+ | 配置解析 |
 | curl | - | 下载和 API 调用 |
 
-> 运行 `bash scripts/install-deps.sh` 可自动安装以上依赖。
+> 运行 `bash scripts/install-deps.sh` 可自动安装以上依赖。脚本还会检查 tar、flock、ss、pgrep 等系统工具，缺失时自动安装。
 
 ## 🚀 快速开始
 
