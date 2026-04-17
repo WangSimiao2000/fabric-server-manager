@@ -193,7 +193,9 @@ fabric-server-manager/
 │   │   ├── backup.sh            # 备份、恢复、回退
 │   │   ├── player.sh            # 玩家管理
 │   │   ├── mods.sh              # Mod 管理、日志、监控
-│   │   └── notify.sh            # 邮件通知
+│   │   ├── notify.sh            # 邮件通知
+│   │   ├── send_email.py        # SMTP 邮件发送（notify.sh 调用）
+│   │   └── sync_motd.py         # MOTD 同步（cmd_start 调用）
 │   ├── upgrade.sh               # 版本升级
 │   ├── watchdog.sh              # 崩溃监控看门狗
 │   ├── deploy.sh                # 一键部署
@@ -203,6 +205,9 @@ fabric-server-manager/
 │   ├── cleanup.sh               # 清理临时文件
 │   └── setup-easyauth.sh        # 安装 EasyAuth
 ├── backups/                     # 备份存储
+├── tests/                       # 自动化测试
+│   ├── framework.sh             # 测试框架
+│   └── run_all.sh               # 运行所有测试
 └── docs/
     └── EASYAUTH_GUIDE.md        # EasyAuth 使用指南
 ```
