@@ -5,6 +5,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
       - name: Install dependencies
         run: sudo apt-get update && sudo apt-get install -y tmux
       - run: bash tests/run_all.sh
