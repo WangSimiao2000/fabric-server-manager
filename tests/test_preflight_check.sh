@@ -10,8 +10,17 @@ setup_env() {
     BASE_DIR="$TMP_DIR"; GAME_DIR="$TMP_DIR/game"; BACKUP_DIR="$TMP_DIR/backups"
     CONFIG_FILE="$TMP_DIR/config.json"; LOCK_FILE="$TMP_DIR/.mc.lock"
     mkdir -p "$GAME_DIR/mods" "$BACKUP_DIR"
-    cat > "$CONFIG_FILE" << 'CONF'
-{"server":{"session_name":"mc_test","fabric_jar":"fabric-server-mc.1.21.4-loader.0.16.14-launcher.1.0.3.jar","java_opts":"","user":"mc","stop_countdown":0,"port":25565},
+
+    # 根据实际 Java 版本选择兼容的 MC 版本，避免硬绑定 Java 21
+    local java_ver=21 mc_ver="1.21.4"
+    if command -v java &>/dev/null; then
+        java_ver=$(java -version 2>&1 | head -1 | grep -oP '"\K[^"]+' | head -1 | cut -d. -f1)
+    fi
+    if [ "$java_ver" -lt 21 ] 2>/dev/null; then mc_ver="1.20.4"
+    elif [ "$java_ver" -lt 17 ] 2>/dev/null; then mc_ver="1.16.5"; fi
+
+    cat > "$CONFIG_FILE" << CONF
+{"server":{"session_name":"mc_test","fabric_jar":"fabric-server-mc.${mc_ver}-loader.0.16.14-launcher.1.0.3.jar","java_opts":"","user":"mc","stop_countdown":0,"port":25565},
  "backup":{"keep_days":7,"min_keep":3,"rsync_dest":"","exclude":[]},
  "check":{"disk_warn_mb":1,"require_easyauth":false},"notify":{"enabled":false}}
 CONF
