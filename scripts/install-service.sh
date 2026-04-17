@@ -30,6 +30,8 @@ User=$SERVER_USER
 WorkingDirectory=$GAME_DIR
 RemainAfterExit=yes
 ExecStart=/usr/bin/tmux new-session -ds $SESSION_NAME -c $GAME_DIR "java $JAVA_OPTS -jar $FABRIC_JAR nogui"
+# ExecStop 分步优雅关闭：通知 → 等待 → stop → 等待保存 → 清理
+# -前缀表示忽略该步失败，确保后续步骤继续执行
 ExecStop=-/usr/bin/tmux send-keys -t $SESSION_NAME "say §c服务器将在${STOP_COUNTDOWN}秒后关闭..." Enter
 ExecStop=-/bin/sleep $STOP_COUNTDOWN
 ExecStop=-/usr/bin/tmux send-keys -t $SESSION_NAME "stop" Enter

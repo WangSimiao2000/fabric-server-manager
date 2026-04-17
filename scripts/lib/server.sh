@@ -31,12 +31,30 @@ preflight_check() {
         error "tmux 未安装"; ((errors++))
     fi
 
-    [ -d "$GAME_DIR" ] && info "GameFile 目录存在 ✓" || { error "GameFile 目录不存在: $GAME_DIR"; ((errors++)); }
-    [ -f "$GAME_DIR/$FABRIC_JAR" ] && info "Fabric 服务端存在 ✓" || { error "Fabric jar 不存在: $FABRIC_JAR"; ((errors++)); }
-    grep -q 'eula=true' "$GAME_DIR/eula.txt" 2>/dev/null && info "EULA 已同意 ✓" || { error "EULA 未同意"; ((errors++)); }
+    if [ -d "$GAME_DIR" ]; then
+        info "GameFile 目录存在 ✓"
+    else
+        error "GameFile 目录不存在: $GAME_DIR"; ((errors++))
+    fi
+
+    if [ -f "$GAME_DIR/$FABRIC_JAR" ]; then
+        info "Fabric 服务端存在 ✓"
+    else
+        error "Fabric jar 不存在: $FABRIC_JAR"; ((errors++))
+    fi
+
+    if grep -q 'eula=true' "$GAME_DIR/eula.txt" 2>/dev/null; then
+        info "EULA 已同意 ✓"
+    else
+        error "EULA 未同意"; ((errors++))
+    fi
 
     if [ -f "$GAME_DIR/server.properties" ]; then
-        grep -q 'online-mode=false' "$GAME_DIR/server.properties" && info "离线模式已启用 ✓" || { warn "online-mode 不是 false"; ((warnings++)); }
+        if grep -q 'online-mode=false' "$GAME_DIR/server.properties"; then
+            info "离线模式已启用 ✓"
+        else
+            warn "online-mode 不是 false"; ((warnings++))
+        fi
     else
         error "server.properties 不存在"; ((errors++))
     fi
@@ -75,35 +93,12 @@ cmd_start() {
     fi
     info "启动服务器..."
 
-    # 同步 motd
-    python3 -c "
-import json, re, sys
-config_file, game_dir = sys.argv[1], sys.argv[2]
-with open(config_file) as f: c = json.load(f)
-motd = c['server'].get('motd', {})
-jar = c['server']['fabric_jar']
-ver = re.search(r'mc\.([0-9]+\.[0-9]+(?:\.[0-9]+)?)', jar)
-ver = ver.group(1) if ver else ''
-sp = game_dir + '/server.properties'
-with open(sp) as f: lines = f.readlines()
-with open(sp, 'w') as f:
-    for l in lines:
-        if l.startswith('motd='): f.write('motd=' + motd.get('server_list', '') + '\n')
-        else: f.write(l)
-mc = game_dir + '/config/MiniMOTD/main.conf'
-try:
-    with open(mc) as f: txt = f.read()
-    if 'line1' in motd: txt = re.sub(r'line1=\"[^\"]*\"', 'line1=\"' + motd['line1'] + '\"', txt)
-    if 'line2' in motd:
-        line2 = motd['line2'].replace('{version}', ver)
-        txt = re.sub(r'line2=\"[^\"]*\"', 'line2=\"' + line2 + '\"', txt)
-    with open(mc, 'w') as f: f.write(txt)
-except: pass
-" "$CONFIG_FILE" "$GAME_DIR" 2>/dev/null || true
+    # 同步 motd 配置到 server.properties 和 MiniMOTD
+    python3 "$SCRIPT_DIR/lib/sync_motd.py" "$CONFIG_FILE" "$GAME_DIR" 2>/dev/null || true
 
     tmux new-session -ds "$SESSION_NAME" -c "$GAME_DIR" \
         "java $JAVA_OPTS -jar $FABRIC_JAR nogui"
-    sleep 3
+    sleep 3  # 等待 tmux 会话和 Java 进程启动
     if is_running; then
         info "服务器已启动 (PID: $(get_pid))"
         # 同步出生点
@@ -113,6 +108,7 @@ except: pass
         sz=$(cfg server.spawn.z 2>/dev/null)
         if [ -n "$sx" ] && [ -n "$sy" ] && [ -n "$sz" ]; then
             local wait=0
+            # 等待服务器输出 "Done" 表示启动完成，最多 60 秒
             while [ $wait -lt 60 ]; do
                 if grep -q "Done" "$GAME_DIR/logs/latest.log" 2>/dev/null; then break; fi
                 sleep 1; wait=$((wait + 1))
@@ -133,9 +129,9 @@ cmd_stop() {
     echo "stopped" > "$BASE_DIR/.watchdog/state"
     info "正在关闭服务器 (${STOP_COUNTDOWN}秒倒计时)..."
     send_cmd "say §c服务器将在${STOP_COUNTDOWN}秒后关闭..."
-    sleep "$STOP_COUNTDOWN"
+    sleep "$STOP_COUNTDOWN"  # 等待倒计时结束
     send_cmd "stop"
-    if wait_stop 30; then
+    if wait_stop 30; then  # 最多等待 30 秒让服务器保存世界并退出
         info "服务器已关闭"
     else
         error "服务器未能在30秒内关闭，强制终止..."
@@ -145,7 +141,7 @@ cmd_stop() {
 
 cmd_restart() {
     if is_running; then cmd_stop; fi
-    sleep 2
+    sleep 2  # 等待端口释放
     cmd_start
 }
 

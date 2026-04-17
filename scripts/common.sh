@@ -12,9 +12,11 @@ CONFIG_FILE="${CONFIG_FILE:-$BASE_DIR/config.json}"
 
 # 颜色
 RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'; CYAN='\033[0;36m'; NC='\033[0m'
+# 日志输出
 info()  { echo -e "${GREEN}[INFO]${NC} $1"; }
 warn()  { echo -e "${YELLOW}[WARN]${NC} $1"; }
 error() { echo -e "${RED}[ERROR]${NC} $1"; }
+step()  { echo -e "\n${CYAN}=== $1 ===${NC}"; }
 
 # 并发锁（flock），防止多实例同时操作
 LOCK_FILE="${BASE_DIR}/.mc.lock"
@@ -123,7 +125,7 @@ get_pid() {
 }
 
 wait_stop() {
-    local timeout=${1:-30} i=0
+    local timeout=${1:-30} i=0  # 默认 30 秒，足够 MC 保存世界并退出
     while is_running && [ $i -lt $timeout ]; do
         sleep 1; ((i++))
     done

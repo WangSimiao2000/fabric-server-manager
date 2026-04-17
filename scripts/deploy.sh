@@ -6,8 +6,6 @@ BASE_DIR="$(dirname "$SCRIPT_DIR")"
 source "$SCRIPT_DIR/common.sh"
 load_config
 
-step()  { echo -e "\n${CYAN}=== $1 ===${NC}"; }
-
 MC_VER=$(get_mc_version || echo "未知")
 
 echo -e "${CYAN}"

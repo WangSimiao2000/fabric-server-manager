@@ -47,7 +47,7 @@ backup_create() {
         info "服务器运行中，暂停自动保存..."
         send_cmd "save-off"
         send_cmd "save-all flush"
-        sleep 5
+        sleep 5  # 等待 save-all flush 完成磁盘写入
         # 确保 save-on 在任何退出/中断时恢复（正常返回 + 信号中断）
         _restore_save() { send_cmd "save-on"; info "已恢复自动保存"; trap - RETURN INT TERM; }
         trap '_restore_save' RETURN INT TERM

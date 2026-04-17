@@ -24,17 +24,17 @@ if "$MC" status 2>/dev/null | grep -q "运行中"; then
         "$MC" player cmd "say §c[自动维护] 服务器将在1分钟后重启"
     fi
 
-    sleep 50
+    sleep 50  # 最后 1 分钟的前 50 秒静默等待
     "$MC" player cmd "say §c[自动维护] 服务器将在10秒后重启！"
-    sleep 10
+    sleep 10  # 最后 10 秒倒计时
 
     log "关闭服务器..."
     "$MC" stop
-    sleep 5
+    sleep 5  # 等待 stop 命令被 tmux 发送并处理
 fi
 
-# 等待完全停止
-timeout=30
+# 等待完全停止（通过轮询 mc.sh status，不能复用 wait_stop 因为是跨进程调用）
+timeout=30  # 最多等待 30 秒
 while "$MC" status 2>/dev/null | grep -q "运行中" && [ $timeout -gt 0 ]; do
     sleep 1; ((timeout--))
 done

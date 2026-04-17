@@ -18,8 +18,6 @@ LAUNCHER_VERSION="1.0.3"
 
 acquire_lock
 
-step()  { echo -e "\n${CYAN}=== $1 ===${NC}"; }
-
 # ==================== 参数解析 ====================
 TARGET_MC_VERSION="${1:-}"
 if [ -z "$TARGET_MC_VERSION" ]; then
@@ -299,10 +297,10 @@ step "4/7 关闭服务器并执行全量备份"
 if is_running; then
     info "通知玩家..."
     send_cmd "say §c[升级维护] 服务器即将关闭进行版本升级 ($CURRENT_MC -> $TARGET_MC_VERSION)，请及时下线" 2>/dev/null || true
-    sleep 10
+    sleep 10  # 给玩家时间下线
     info "关闭服务器..."
     cmd_stop || true
-    sleep 5
+    sleep 5  # 等待 stop 命令处理完毕
     # 等待完全停止
     wait_stop 30
 fi
@@ -311,7 +309,7 @@ fi
 if pgrep -f "fabric-server-mc" &>/dev/null; then
     warn "旧进程仍在运行，强制终止..."
     pkill -f "fabric-server-mc" || true
-    sleep 3
+    sleep 3  # 等待进程退出并释放端口
 fi
 tmux kill-session -t "$SESSION_NAME" 2>/dev/null || true
 
