@@ -25,7 +25,12 @@ CONF
 
 suite "preflight_check 全部通过"
 setup_env
+# mock java 和 tmux 命令，避免依赖 CI 环境的实际安装
+java()  { echo 'openjdk version "21.0.1" 2024-01-01' >&2; }; export -f java
+tmux()  { return 0; }; export -f tmux
+ss()    { echo ""; }; export -f ss
 out=$(preflight_check 2>&1); ret=$?
+unset -f java tmux ss
 assert_eq "$ret" "0" "返回 0"
 assert_contains "$out" "所有检查通过" "输出通过信息"
 
