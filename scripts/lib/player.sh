@@ -1,31 +1,36 @@
 #!/bin/bash
 # 玩家管理
 
+# Minecraft 用户名：字母、数字、下划线，3-16 字符
+validate_player() {
+    [[ "$1" =~ ^[a-zA-Z0-9_]{3,16}$ ]] || { error "无效的玩家名: $1"; return 1; }
+}
+
 cmd_player() {
     case "${1:-help}" in
         list) player_list ;;
         op)
             if [ -z "$2" ]; then echo "用法: mc.sh player op <玩家名>"
-            else send_cmd "op $2"; info "已给予 $2 OP 权限"; fi ;;
+            else validate_player "$2" && send_cmd "op $2" && info "已给予 $2 OP 权限"; fi ;;
         deop)
             if [ -z "$2" ]; then echo "用法: mc.sh player deop <玩家名>"
-            else send_cmd "deop $2"; info "已移除 $2 OP 权限"; fi ;;
+            else validate_player "$2" && send_cmd "deop $2" && info "已移除 $2 OP 权限"; fi ;;
         ban)
             if [ -z "$2" ]; then echo "用法: mc.sh player ban <玩家名> [原因]"
-            else send_cmd "ban $2 ${*:3}"; info "已封禁 $2"; fi ;;
+            else validate_player "$2" && send_cmd "ban $2 ${*:3}" && info "已封禁 $2"; fi ;;
         unban)
             if [ -z "$2" ]; then echo "用法: mc.sh player unban <玩家名>"
-            else send_cmd "pardon $2"; info "已解封 $2"; fi ;;
+            else validate_player "$2" && send_cmd "pardon $2" && info "已解封 $2"; fi ;;
         whitelist)
             case "$2" in
                 on)  send_cmd "whitelist on"; info "白名单已启用" ;;
                 off) send_cmd "whitelist off"; info "白名单已关闭" ;;
                 add)
                     if [ -z "$3" ]; then echo "用法: mc.sh player whitelist add <玩家名>"
-                    else send_cmd "whitelist add $3"; info "已添加 $3 到白名单"; fi ;;
+                    else validate_player "$3" && send_cmd "whitelist add $3" && info "已添加 $3 到白名单"; fi ;;
                 remove)
                     if [ -z "$3" ]; then echo "用法: mc.sh player whitelist remove <玩家名>"
-                    else send_cmd "whitelist remove $3"; info "已从白名单移除 $3"; fi ;;
+                    else validate_player "$3" && send_cmd "whitelist remove $3" && info "已从白名单移除 $3"; fi ;;
                 *) echo "用法: mc.sh player whitelist <on|off|add|remove> [玩家名]" ;;
             esac ;;
         cmd)

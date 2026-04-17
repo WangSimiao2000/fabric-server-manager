@@ -16,9 +16,9 @@ echo "=== 清理无用文件 ==="
 echo "游戏目录: $GAME_DIR"
 echo ""
 
-# 崩溃报告
-echo "[1/5] 清空旧崩溃报告..."
-rm -rf crash-reports/*
+# 崩溃报告（保留最近 5 份）
+echo "[1/5] 清理旧崩溃报告..."
+ls -t crash-reports/*.txt 2>/dev/null | tail -n +6 | xargs -r rm -f
 
 # 旧日志（保留 latest.log）
 echo "[2/5] 清理旧日志..."
@@ -38,5 +38,5 @@ mkdir -p crash-reports logs
 
 echo ""
 echo "=== 清理完成 ==="
-echo "已保留: 玩家数据、地图、背包、成就、统计、mods、配置"
+echo "已保留: 玩家数据、地图、背包、成就、统计、mods、配置、最近崩溃报告"
 echo "已删除: 旧日志、旧崩溃报告、临时文件"

@@ -2,6 +2,7 @@
 # 定时重启 + 冷备份脚本（由 cron 每天调用）
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 source "$SCRIPT_DIR/common.sh"
+load_config
 MC="$SCRIPT_DIR/mc.sh"
 
 log() { echo "[$(date '+%Y-%m-%d %H:%M:%S')] $1"; }
@@ -15,7 +16,7 @@ WARN_MIN=$(cfg restart.warn_minutes 2>/dev/null || echo 5)
 
 log "=== 定时重启开始 (警告时间: ${WARN_MIN}分钟) ==="
 
-if "$MC" status 2>/dev/null | grep -q "运行中"; then
+if is_running; then
     log "发送重启警告..."
     "$MC" player cmd "say §e[自动维护] 服务器将在${WARN_MIN}分钟后重启"
 
@@ -33,9 +34,9 @@ if "$MC" status 2>/dev/null | grep -q "运行中"; then
     sleep 5  # 等待 stop 命令被 tmux 发送并处理
 fi
 
-# 等待完全停止（通过轮询 mc.sh status，不能复用 wait_stop 因为是跨进程调用）
-timeout=30  # 最多等待 30 秒
-while "$MC" status 2>/dev/null | grep -q "运行中" && [ $timeout -gt 0 ]; do
+# 等待完全停止
+timeout=30
+while is_running && [ $timeout -gt 0 ]; do
     sleep 1; ((timeout--))
 done
 

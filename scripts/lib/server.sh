@@ -107,10 +107,11 @@ cmd_start() {
         sy=$(cfg server.spawn.y 2>/dev/null)
         sz=$(cfg server.spawn.z 2>/dev/null)
         if [ -n "$sx" ] && [ -n "$sy" ] && [ -n "$sz" ]; then
-            local wait=0
-            # 等待服务器输出 "Done" 表示启动完成，最多 60 秒
+            local wait=0 log_size
+            log_size=$(wc -c < "$GAME_DIR/logs/latest.log" 2>/dev/null || echo 0)
+            # 只检查启动后新增的日志内容，避免匹配上次残留的 "Done"
             while [ $wait -lt 60 ]; do
-                if grep -q "Done" "$GAME_DIR/logs/latest.log" 2>/dev/null; then break; fi
+                if tail -c +"$((log_size + 1))" "$GAME_DIR/logs/latest.log" 2>/dev/null | grep -q "Done ("; then break; fi
                 sleep 1; wait=$((wait + 1))
             done
             send_cmd "setworldspawn $sx $sy $sz"
@@ -126,7 +127,9 @@ cmd_stop() {
     fi
     # 标记为正常关闭，避免 watchdog 误报
     mkdir -p "$BASE_DIR/.watchdog"
-    echo "stopped" > "$BASE_DIR/.watchdog/state"
+    local _tmp; _tmp=$(mktemp "$BASE_DIR/.watchdog/state.XXXXXX")
+    echo "stopped" > "$_tmp"
+    mv -f "$_tmp" "$BASE_DIR/.watchdog/state"
     info "正在关闭服务器 (${STOP_COUNTDOWN}秒倒计时)..."
     send_cmd "say §c服务器将在${STOP_COUNTDOWN}秒后关闭..."
     sleep "$STOP_COUNTDOWN"  # 等待倒计时结束
@@ -154,17 +157,27 @@ cmd_status() {
         local pid
         pid=$(get_pid)
         info "状态: 运行中 (PID: $pid)"
-        # Use top -bn2 (two samples, 0.5s apart) for a meaningful CPU reading
-        local stats
-        stats=$(top -bn2 -d0.5 -p "$pid" 2>/dev/null | awk -v p="$pid" '$1==p {cpu=$9; mem=$10} END {printf "%s %s", cpu, mem}')
+        # 用 top 两次采样获取实时 CPU（ps %cpu 是生命周期平均值，长时间运行后趋近 0）
         local cpu mem etime
-        cpu=$(echo "$stats" | awk '{print $1}')
-        mem=$(echo "$stats" | awk '{print $2}')
+        cpu=$(top -bn2 -d0.1 -p "$pid" 2>/dev/null | awk -v p="$pid" '$1==p {cpu=$9} END {print cpu}')
+        mem=$(ps -p "$pid" -o %mem= 2>/dev/null | xargs)
         etime=$(ps -p "$pid" -o etime= 2>/dev/null | xargs)
         printf "  CPU: %s%%  内存: %s%%  运行时间: %s\n" "${cpu:-?}" "${mem:-?}" "${etime:-?}"
         local rss
         rss=$(ps -p "$pid" -o rss= 2>/dev/null | awk '{printf "%.0f", $1/1024}')
         [ -n "$rss" ] && echo "  Java 实际内存: ${rss}MB"
+        # 通过 SLP 协议查询在线玩家
+        local ping_json port
+        port=$(cfg server.port)
+        if ping_json=$(python3 "$SCRIPT_DIR/lib/mc_ping.py" "${port:-25565}" 2>/dev/null); then
+            local online max names
+            online=$(echo "$ping_json" | python3 -c "import json,sys;d=json.load(sys.stdin);print(d['online'])")
+            max=$(echo "$ping_json" | python3 -c "import json,sys;d=json.load(sys.stdin);print(d['max'])")
+            names=$(echo "$ping_json" | python3 -c "import json,sys;d=json.load(sys.stdin);n=d.get('names',[]);print(', '.join(n) if n else '')")
+            printf "  在线玩家: %s / %s" "$online" "$max"
+            [ -n "$names" ] && printf "  [%s]" "$names"
+            echo
+        fi
     else
         warn "状态: 未运行"
     fi

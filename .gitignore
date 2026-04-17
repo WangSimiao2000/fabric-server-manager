@@ -35,3 +35,4 @@ GameFile/config/spark/tmp/
 GameFile/config/EasyAuth/backup/
 GameFile/config/*.backup*
 GameFile/config/chunky/tasks/
+__pycache__/

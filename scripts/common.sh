@@ -53,16 +53,25 @@ load_config() {
     fi
     # 确保配置文件仅所有者可读写（含 SMTP 密码等敏感信息）
     chmod 600 "$CONFIG_FILE" 2>/dev/null || true
-    SESSION_NAME=$(cfg server.session_name)
-    FABRIC_JAR=$(cfg server.fabric_jar)
-    JAVA_OPTS=$(cfg server.java_opts)
-    SERVER_USER=$(cfg server.user)
-    STOP_COUNTDOWN=$(cfg server.stop_countdown)
-    BACKUP_KEEP_DAYS=$(cfg backup.keep_days)
-    BACKUP_MIN_KEEP=$(cfg backup.min_keep)
-    RSYNC_DEST=$(cfg backup.rsync_dest)
-    DISK_WARN_MB=$(cfg check.disk_warn_mb)
-    REQUIRE_EASYAUTH=$(cfg check.require_easyauth)
+    # 一次 python3 调用读取所有配置，避免 10+ 次 fork
+    eval "$(python3 -c "
+import json, sys, shlex
+with open(sys.argv[1]) as f: c = json.load(f)
+s, b, ck = c['server'], c['backup'], c['check']
+for var, val in [
+    ('SESSION_NAME', s['session_name']),
+    ('FABRIC_JAR',   s['fabric_jar']),
+    ('JAVA_OPTS',    s['java_opts']),
+    ('SERVER_USER',  s['user']),
+    ('STOP_COUNTDOWN', s['stop_countdown']),
+    ('BACKUP_KEEP_DAYS', b['keep_days']),
+    ('BACKUP_MIN_KEEP',  b['min_keep']),
+    ('RSYNC_DEST',       b.get('rsync_dest', '')),
+    ('DISK_WARN_MB',     ck['disk_warn_mb']),
+    ('REQUIRE_EASYAUTH', str(ck['require_easyauth']).lower()),
+]:
+    print(f'{var}={shlex.quote(str(val))}')
+" "$CONFIG_FILE")"
 }
 
 # 从 FABRIC_JAR 文件名提取 MC 版本号
@@ -116,10 +125,18 @@ send_cmd() {
 
 get_pid() {
     local pid
-    # tmux 直接启动 java，pane_pid 即为 Java 进程 PID
+    # pgrep -f 会匹配 tmux server 进程（其命令行含 jar 名），用 -x 排除不了，改回 tmux pane_pid
+    # tmux pane 直接 exec java 时 pane_pid 就是 java；若经 shell 中转则取其子进程
     pid=$(tmux list-panes -t "$SESSION_NAME" -F '#{pane_pid}' 2>/dev/null | head -1)
-    if [ -z "$pid" ]; then
-        pid=$(pgrep -f "java.*$FABRIC_JAR" | head -1)
+    if [ -n "$pid" ]; then
+        # pane_pid 可能是 shell，检查是否是 java，不是则找子进程
+        if ! ps -p "$pid" -o comm= 2>/dev/null | grep -q java; then
+            local child
+            child=$(pgrep -P "$pid" -x java 2>/dev/null | head -1)
+            [ -n "$child" ] && pid="$child"
+        fi
+    else
+        pid=$(pgrep -x java -f "$FABRIC_JAR" 2>/dev/null | head -1)
     fi
     echo "$pid"
 }

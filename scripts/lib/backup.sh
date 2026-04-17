@@ -57,9 +57,9 @@ backup_create() {
     mapfile -t exclude_args < <(python3 -c "
 import json, sys
 with open(sys.argv[1]) as f: c = json.load(f)
-for e in c['backup']['exclude']:
+for e in c.get('backup', {}).get('exclude', []):
     print(f'--exclude={e}')
-" "$CONFIG_FILE" 2>/dev/null)
+" "$CONFIG_FILE")
 
     info "创建备份: $filename"
     tar -czf "$BACKUP_DIR/$filename" \

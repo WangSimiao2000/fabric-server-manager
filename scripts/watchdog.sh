@@ -28,6 +28,13 @@ mkdir -p "$WATCHDOG_DIR"
 CRASH_THRESHOLD=$(cfg watchdog.crash_threshold 2>/dev/null || echo 3)
 CRASH_WINDOW=$(cfg watchdog.crash_window_minutes 2>/dev/null || echo 10)
 
+# 原子写入状态文件（tmp + mv 防止竞态）
+write_state() {
+    local tmp; tmp=$(mktemp "$WATCHDOG_DIR/state.XXXXXX")
+    echo "$1" > "$tmp"
+    mv -f "$tmp" "$STATE_FILE"
+}
+
 # 读取上次状态
 read_state() {
     cat "$STATE_FILE" 2>/dev/null || echo "unknown"
@@ -78,7 +85,7 @@ handle_crash() {
 
     if [ "$recent" -ge "$CRASH_THRESHOLD" ]; then
         # 反复崩溃超阈值 → notified，停止自动重启
-        echo "notified" > "$STATE_FILE"
+        write_state "notified"
         send_notify \
             "[MC服务器] ⚠️ 反复崩溃警告" \
             "服务器在 ${CRASH_WINDOW} 分钟内崩溃了 ${recent} 次！\n\n服务器: ${hostname}\n时间: ${timestamp}\n\n已停止自动重启，请人工检查。${crash_info}"
@@ -98,7 +105,7 @@ main() {
 
     # 服务器在线 → 标记 running，无需操作
     if is_running; then
-        echo "running" > "$STATE_FILE"
+        write_state "running"
         return 0
     fi
 
@@ -108,7 +115,7 @@ main() {
     fi
 
     # 服务器离线 + 上次是 running/unknown → 意外停止
-    echo "stopped" > "$STATE_FILE"
+    write_state "stopped"
     record_crash
 
     local recent; recent=$(count_recent_crashes)
