@@ -53,11 +53,43 @@ else
 fi
 
 # curl
-if command -v curl &>/dev/null || command -v wget &>/dev/null; then
-    info "curl/wget 已安装"
+if command -v curl &>/dev/null; then
+    info "curl 已安装"
 else
     warn "curl 未安装，安装中..."
     install_pkg curl
+fi
+
+# tar（备份核心依赖）
+if command -v tar &>/dev/null; then
+    info "tar 已安装"
+else
+    warn "tar 未安装，安装中..."
+    install_pkg tar
+fi
+
+# ss（端口检查，来自 iproute2）
+if command -v ss &>/dev/null; then
+    info "ss 已安装"
+else
+    warn "ss 未安装，安装中..."
+    install_pkg iproute2 || install_pkg iproute
+fi
+
+# flock（并发锁，来自 util-linux）
+if command -v flock &>/dev/null; then
+    info "flock 已安装"
+else
+    warn "flock 未安装，安装中..."
+    install_pkg util-linux
+fi
+
+# pgrep（进程检测，来自 procps）
+if command -v pgrep &>/dev/null; then
+    info "pgrep 已安装"
+else
+    warn "pgrep 未安装，安装中..."
+    install_pkg procps || install_pkg procps-ng
 fi
 
 echo ""
