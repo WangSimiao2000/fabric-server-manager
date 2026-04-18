@@ -96,8 +96,9 @@ cmd_start() {
     # 同步 motd 配置到 server.properties 和 MiniMOTD
     python3 "$SCRIPT_DIR/lib/sync_motd.py" "$CONFIG_FILE" "$GAME_DIR" 2>/dev/null || true
 
+    # 200>&- 关闭 flock 的 fd，防止 tmux 继承锁导致后续 mc-restart 无法获取锁
     tmux new-session -ds "$SESSION_NAME" -c "$GAME_DIR" \
-        "java $JAVA_OPTS -jar $FABRIC_JAR nogui"
+        "java $JAVA_OPTS -jar $FABRIC_JAR nogui" 200>&-
     sleep 3  # 等待 tmux 会话和 Java 进程启动
     if is_running; then
         info "服务器已启动 (PID: $(get_pid))"

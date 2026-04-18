@@ -16,6 +16,10 @@ WARN_MIN=$(cfg restart.warn_minutes 2>/dev/null || echo 5)
 
 log "=== 定时重启开始 (警告时间: ${WARN_MIN}分钟) ==="
 
+# 通知 watchdog 这是计划内停机，避免误报"意外停止"
+mkdir -p "$BASE_DIR/.watchdog"
+echo "stopped" > "$BASE_DIR/.watchdog/state"
+
 if is_running; then
     log "发送重启警告..."
     "$MC" player cmd "say §e[自动维护] 服务器将在${WARN_MIN}分钟后重启"
