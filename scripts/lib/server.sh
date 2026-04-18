@@ -129,7 +129,7 @@ cmd_stop() {
     # 标记为正常关闭，避免 watchdog 误报
     mkdir -p "$BASE_DIR/.watchdog"
     local _tmp; _tmp=$(mktemp "$BASE_DIR/.watchdog/state.XXXXXX")
-    echo "stopped" > "$_tmp"
+    echo "stopped:cmd_stop:$(date +%s)" > "$_tmp"
     mv -f "$_tmp" "$BASE_DIR/.watchdog/state"
     info "正在关闭服务器 (${STOP_COUNTDOWN}秒倒计时)..."
     send_cmd "say §c服务器将在${STOP_COUNTDOWN}秒后关闭..."

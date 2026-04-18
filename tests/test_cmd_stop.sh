@@ -36,7 +36,9 @@ suite "cmd_stop 通知包含倒计时秒数"
 assert_contains "$cmds" "${STOP_COUNTDOWN}秒" "包含秒数"
 
 suite "cmd_stop watchdog 状态"
-assert_eq "$(cat "$BASE_DIR/.watchdog/state")" "stopped" "设为 stopped"
+raw=$(cat "$BASE_DIR/.watchdog/state")
+assert_eq "${raw%%:*}" "stopped" "设为 stopped"
+assert_contains "$raw" "cmd_stop" "包含来源标记"
 
 suite "cmd_stop 命令顺序（say 在 stop 前）"
 say_n=$(grep -n "say" "$CMD_LOG" | head -1 | cut -d: -f1)

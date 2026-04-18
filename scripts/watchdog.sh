@@ -29,15 +29,17 @@ CRASH_THRESHOLD=$(cfg watchdog.crash_threshold 2>/dev/null || echo 3)
 CRASH_WINDOW=$(cfg watchdog.crash_window_minutes 2>/dev/null || echo 10)
 
 # 原子写入状态文件（tmp + mv 防止竞态）
+# 格式: state:who:timestamp（如 stopped:mc-restart:1713405600）
 write_state() {
     local tmp; tmp=$(mktemp "$WATCHDOG_DIR/state.XXXXXX")
-    echo "$1" > "$tmp"
+    echo "$1:${2:-watchdog}:$(date +%s)" > "$tmp"
     mv -f "$tmp" "$STATE_FILE"
 }
 
-# 读取上次状态
+# 读取上次状态（只取第一个字段，忽略 who:timestamp）
 read_state() {
-    cat "$STATE_FILE" 2>/dev/null || echo "unknown"
+    local raw; raw=$(cat "$STATE_FILE" 2>/dev/null || echo "unknown")
+    echo "${raw%%:*}"
 }
 
 # 记录一次崩溃时间戳

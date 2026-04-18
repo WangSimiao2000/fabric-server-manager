@@ -30,6 +30,8 @@ acquire_lock() {
         error "另一个 mc.sh 实例正在运行，请稍后再试"
         exit 1
     fi
+    # 注意：Bash 无法对 exec N> 的 fd 设置 CLOEXEC，
+    # 启动长期子进程（如 tmux）时必须手动加 200>&- 关闭继承
     export _MC_LOCK_HELD=1
 }
 

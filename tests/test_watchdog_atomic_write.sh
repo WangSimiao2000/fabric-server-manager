@@ -16,22 +16,25 @@ WATCHDOG_DIR="$BASE_DIR/.watchdog"
 STATE_FILE="$WATCHDOG_DIR/state"
 mkdir -p "$WATCHDOG_DIR"
 
-# 提取 write_state 函数
+# 提取 write_state 函数（新格式: state:who:timestamp）
 write_state() {
     local tmp; tmp=$(mktemp "$WATCHDOG_DIR/state.XXXXXX")
-    echo "$1" > "$tmp"
+    echo "$1:${2:-watchdog}:$(date +%s)" > "$tmp"
     mv -f "$tmp" "$STATE_FILE"
 }
 
 suite "write_state 基本功能"
 write_state "running"
-assert_eq "$(cat "$STATE_FILE")" "running" "写入 running"
+raw=$(cat "$STATE_FILE")
+assert_eq "${raw%%:*}" "running" "写入 running"
 
 write_state "stopped"
-assert_eq "$(cat "$STATE_FILE")" "stopped" "写入 stopped"
+raw=$(cat "$STATE_FILE")
+assert_eq "${raw%%:*}" "stopped" "写入 stopped"
 
 write_state "notified"
-assert_eq "$(cat "$STATE_FILE")" "notified" "写入 notified"
+raw=$(cat "$STATE_FILE")
+assert_eq "${raw%%:*}" "notified" "写入 notified"
 
 suite "write_state 原子性"
 # 写入后不应有残留的临时文件
@@ -42,7 +45,8 @@ assert_eq "$tmp_count" "0" "无残留临时文件"
 suite "write_state 覆盖已有状态"
 write_state "running"
 write_state "stopped"
-assert_eq "$(cat "$STATE_FILE")" "stopped" "覆盖成功"
+raw=$(cat "$STATE_FILE")
+assert_eq "${raw%%:*}" "stopped" "覆盖成功"
 # 文件应只有一行
 lines=$(wc -l < "$STATE_FILE")
 assert_eq "$lines" "1" "文件只有一行"

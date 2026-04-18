@@ -54,8 +54,10 @@ echo "running" > "$TMP_DIR/.watchdog/state"
 export BASE_DIR="$TMP_DIR" CONFIG_FILE CALL_LOG
 (bash "$RESTART_TEST") > /dev/null 2>&1 || true
 
-assert_eq "$(cat "$TMP_DIR/.watchdog/state" 2>/dev/null)" "stopped" \
+raw=$(cat "$TMP_DIR/.watchdog/state" 2>/dev/null)
+assert_eq "${raw%%:*}" "stopped" \
     "执行后 watchdog 状态为 stopped"
+assert_contains "$raw" "mc-restart" "包含来源标记"
 
 suite "watchdog 在 stopped 状态下不误报"
 # 模拟 watchdog 主逻辑：服务器离线 + 状态为 stopped → 不报警
