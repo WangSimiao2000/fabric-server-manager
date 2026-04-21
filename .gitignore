@@ -7,8 +7,7 @@ GameFile/server.properties
 config.json
 
 # ===== 二进制 / 大文件 =====
-GameFile/mods/*.jar
-GameFile/mods/luckperms/
+GameFile/mods/
 GameFile/libraries/
 GameFile/versions/
 GameFile/.fabric/
