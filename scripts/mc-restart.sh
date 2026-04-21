@@ -44,6 +44,9 @@ while is_running && [ $timeout -gt 0 ]; do
     sleep 1; ((timeout--))
 done
 
+# 再次标记为计划停机，防止 watchdog 在警告等待期间覆盖状态后误报
+echo "stopped:mc-restart:$(date +%s)" > "$BASE_DIR/.watchdog/state"
+
 # 冷备份
 log "开始冷备份..."
 "$MC" backup create
