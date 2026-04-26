@@ -1,37 +1,22 @@
-# ===== 运行时数据 =====
-GameFile/world/
-GameFile/EasyAuth/
-GameFile/logs/
-GameFile/crash-reports/
-GameFile/server.properties
-config.json
+# ===== GameFile: 默认全部忽略，反向保留需要的文件 =====
+GameFile/*
+!GameFile/config/
+!GameFile/eula.txt
+!GameFile/server.properties.example
 
-# ===== 二进制 / 大文件 =====
-GameFile/mods/
-GameFile/libraries/
-GameFile/versions/
-GameFile/.fabric/
-GameFile/fabric-server-mc.*.jar
-
-# ===== 备份 =====
-GameFile/backup/
-GameFile/mods.disabled/
-backups/
-
-# ===== 运行时生成的 JSON =====
-GameFile/usercache.json
-GameFile/ops.json
-GameFile/banned-players.json
-GameFile/banned-ips.json
-GameFile/whitelist.json
-
-# ===== 缓存 / 临时文件 =====
-.cache/
-.watchdog/
-.mc.lock
-GameFile/config/spark/tmp-client/
+# config 下的运行时 / 缓存文件仍然忽略
 GameFile/config/spark/tmp/
+GameFile/config/spark/tmp-client/
 GameFile/config/EasyAuth/backup/
 GameFile/config/*.backup*
 GameFile/config/chunky/tasks/
+GameFile/config/luckperms/translations/
+GameFile/config/luckperms/editor-keystore.json
+
+# ===== 项目级忽略 =====
+config.json
+backups/
+.cache/
+.watchdog/
+.mc.lock
 __pycache__/
