@@ -124,6 +124,8 @@ for ver in stable[:10]:
         print(f' {n_ok}/{total} 兼容，不兼容: ' + ', '.join(fail_names))
     if n_ok > best_ok:
         best_ver, best_ok, best_fail = ver, n_ok, fail
+    if n_ok == total:
+        break
 
 print()
 if unknown:
