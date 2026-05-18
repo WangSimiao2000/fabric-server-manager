@@ -12,6 +12,7 @@ GameFile/config/*.backup*
 GameFile/config/chunky/tasks/
 GameFile/config/luckperms/translations/
 GameFile/config/luckperms/editor-keystore.json
+GameFile/config/beautifiedchatserver/
 
 # ===== 项目级忽略 =====
 config.json
