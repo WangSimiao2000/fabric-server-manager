@@ -13,6 +13,7 @@ source "$SCRIPT_DIR/lib/backup.sh"
 source "$SCRIPT_DIR/lib/notify.sh"
 load_config
 MODS_DIR="$GAME_DIR/mods"
+MODS_JSON="$GAME_DIR/mods.json"
 UA="FabricServerManager/1.0"
 LAUNCHER_VERSION="1.0.3"
 
@@ -27,63 +28,21 @@ if [ -z "$TARGET_MC_VERSION" ]; then
 
     info "正在查找所有 Mod 都兼容的最新 MC 版本..."
 
-    # 收集所有 mod 的 project_id
-    mod_ids=()
-    unknown_mods=()
-    for jar in "$MODS_DIR"/*.jar; do
-        [ -f "$jar" ] || continue
-        [ -d "$jar" ] && continue
-        sha1=$(sha1sum "$jar" | cut -d' ' -f1)
-        pid=$(curl -s "https://api.modrinth.com/v2/version_file/$sha1?algorithm=sha1" -H "User-Agent: $UA" \
-            | python3 -c "import json,sys; print(json.load(sys.stdin).get('project_id',''))" 2>/dev/null || true)
-        if [ -n "$pid" ]; then
-            mod_ids+=("$pid")
-        else
-            unknown_mods+=("$(basename "$jar")")
-        fi
-    done
-
-    # 获取最新稳定版本列表，逐个检查
     CURRENT_JAR=$(cfg server.fabric_jar)
     CURRENT_MC=$(get_mc_version "$CURRENT_JAR")
 
-    # 收集 mod 名称和 project_id 的映射
-    mod_names=()
-    for jar in "$MODS_DIR"/*.jar; do
-        [ -f "$jar" ] || continue
-        [ -d "$jar" ] && continue
-        mod_names+=("$(basename "$jar")")
-    done
-
     python3 -c "
-import json, sys, urllib.request
+import json, sys, urllib.request, fnmatch
 
 ua = sys.argv[1]
-mod_ids_raw = sys.argv[2].strip()
-mod_names_raw = sys.argv[3].strip()
-current = sys.argv[4]
-unknown_raw = sys.argv[5].strip()
+mods_json = sys.argv[2]
+current = sys.argv[3]
 
-mod_ids = mod_ids_raw.split('\n') if mod_ids_raw else []
-mod_names = mod_names_raw.split('\n') if mod_names_raw else []
-unknown = [u for u in (unknown_raw.split('\n') if unknown_raw else []) if u]
+with open(mods_json) as f:
+    mods = json.load(f)['mods']
 
-# 建立 project_id -> mod名称 的映射（通过索引对应）
-# mod_ids 只包含识别到的 mod，需要重建映射
-id_to_name = {}
-idx = 0
-for name in mod_names:
-    # unknown mods 没有 id，跳过
-    if name in unknown:
-        continue
-    if idx < len(mod_ids):
-        id_to_name[mod_ids[idx]] = name
-        idx += 1
-
-# 获取稳定版本
-req = urllib.request.Request('https://meta.fabricmc.net/v2/versions/game', headers={'User-Agent': ua})
-versions = json.loads(urllib.request.urlopen(req).read())
-stable = [v['version'] for v in versions if v['stable']]
+modrinth_mods = [m for m in mods if m['source'] == 'modrinth']
+github_mods = [m for m in mods if m['source'] == 'github']
 
 def has_loader(ver):
     try:
@@ -92,22 +51,47 @@ def has_loader(ver):
         return any(v['loader']['stable'] for v in d)
     except: return False
 
-def check_mods(ver, ids):
+def check_modrinth(ver, mods):
     ok, fail = [], []
-    for pid in ids:
+    for m in mods:
         try:
-            url = f'https://api.modrinth.com/v2/project/{pid}/version?game_versions=%5B%22{ver}%22%5D&loaders=%5B%22fabric%22%5D'
+            url = f'https://api.modrinth.com/v2/project/{m[\"project_id\"]}/version?game_versions=%5B%22{ver}%22%5D&loaders=%5B%22fabric%22%5D'
             req = urllib.request.Request(url, headers={'User-Agent': ua})
             d = json.loads(urllib.request.urlopen(req).read())
-            if d: ok.append(pid)
-            else: fail.append(pid)
+            if d: ok.append(m['name'])
+            else: fail.append(m['name'])
         except:
-            fail.append(pid)
+            fail.append(m['name'])
     return ok, fail
 
-print()
-total = len(mod_ids)
+def check_github(ver, mods):
+    ok, fail = [], []
+    for m in mods:
+        try:
+            url = f'https://api.github.com/repos/{m[\"repo\"]}/releases'
+            req = urllib.request.Request(url, headers={'User-Agent': ua})
+            releases = json.loads(urllib.request.urlopen(req).read())
+            pattern = m['asset_pattern'].replace('{mc_version}', ver)
+            found = False
+            for rel in releases:
+                for asset in rel.get('assets', []):
+                    if fnmatch.fnmatch(asset['name'], pattern):
+                        found = True; break
+                if found: break
+            if found: ok.append(m['name'])
+            else: fail.append(m['name'])
+        except:
+            fail.append(m['name'])
+    return ok, fail
+
+# 获取稳定版本
+req = urllib.request.Request('https://meta.fabricmc.net/v2/versions/game', headers={'User-Agent': ua})
+versions = json.loads(urllib.request.urlopen(req).read())
+stable = [v['version'] for v in versions if v['stable']]
+
+total = len(mods)
 best_ver, best_ok, best_fail = None, 0, []
+print()
 
 for ver in stable[:10]:
     sys.stdout.write(f'  检查 {ver} ...')
@@ -115,24 +99,20 @@ for ver in stable[:10]:
     if not has_loader(ver):
         print(' Fabric 不支持')
         continue
-    ok, fail = check_mods(ver, mod_ids)
-    n_ok = len(ok)
+    mr_ok, mr_fail = check_modrinth(ver, modrinth_mods)
+    gh_ok, gh_fail = check_github(ver, github_mods)
+    n_ok = len(mr_ok) + len(gh_ok)
+    all_fail = mr_fail + gh_fail
     if n_ok == total:
         print(f' ✓ 全部 {total} 个 Mod 兼容')
     else:
-        fail_names = [id_to_name.get(p, p) for p in fail]
-        print(f' {n_ok}/{total} 兼容，不兼容: ' + ', '.join(fail_names))
+        print(f' {n_ok}/{total} 兼容，不兼容: ' + ', '.join(all_fail))
     if n_ok > best_ok:
-        best_ver, best_ok, best_fail = ver, n_ok, fail
+        best_ver, best_ok, best_fail = ver, n_ok, all_fail
     if n_ok == total:
         break
 
 print()
-if unknown:
-    print(f'  ⚠ {len(unknown)} 个 Mod 不在 Modrinth，无法自动检查:')
-    for u in unknown: print(f'    ? {u}')
-    print()
-
 if best_ver and best_ok == total:
     if best_ver == current:
         print(f'  当前已是最新全兼容版本: MC {current}')
@@ -140,14 +120,13 @@ if best_ver and best_ok == total:
         print(f'  ✅ 推荐升级到: MC {best_ver} (所有 {total} 个 Mod 均兼容)')
         print(f'  执行: mc.sh upgrade {best_ver}')
 elif best_ver:
-    fail_names = [id_to_name.get(p, p) for p in best_fail]
     print(f'  最佳版本: MC {best_ver} ({best_ok}/{total} 个 Mod 兼容)')
-    print('  不兼容: ' + ', '.join(fail_names))
+    print('  不兼容: ' + ', '.join(best_fail))
     if best_ver != current:
         print(f'  如可接受禁用以上 Mod，执行: mc.sh upgrade {best_ver}')
 else:
     print(f'  未找到兼容版本')
-" "$UA" "$(printf '%s\n' "${mod_ids[@]+"${mod_ids[@]}"}")" "$(printf '%s\n' "${mod_names[@]+"${mod_names[@]}"}")" "$CURRENT_MC" "$(printf '%s\n' "${unknown_mods[@]+"${unknown_mods[@]}"}")"
+" "$UA" "$MODS_JSON" "$CURRENT_MC"
     exit 0
 fi
 
@@ -189,7 +168,7 @@ MODS_OK=()
 MODS_FAIL=()
 MODS_UNKNOWN=()
 
-# 缓存 mod -> project_id 映射，避免步骤6重复调用API
+# 缓存兼容性检查结果，供步骤6使用
 MOD_CACHE=$(mktemp)
 SNAPSHOT_DIR=""  # 设置后 trap 会自动回滚
 _upgrade_cleanup() {
@@ -214,49 +193,84 @@ _upgrade_cleanup() {
 }
 trap '_upgrade_cleanup' EXIT
 
-for jar in "$MODS_DIR"/*.jar; do
-    [ -f "$jar" ] || continue
-    [ -d "$jar" ] && continue
-    name=$(basename "$jar")
+# 从 mods.json 读取配置进行兼容性检查
+if [ -f "$MODS_JSON" ]; then
+    # Modrinth mods
+    while IFS= read -r line; do
+        name=$(echo "$line" | cut -d'|' -f1)
+        project_id=$(echo "$line" | cut -d'|' -f2)
+        # 缓存: name|source|project_id_or_repo
+        echo "modrinth|$name|$project_id" >> "$MOD_CACHE"
 
-    sha1=$(sha1sum "$jar" | cut -d' ' -f1)
-    response=$(curl -s -w "\n%{http_code}" "https://api.modrinth.com/v2/version_file/$sha1?algorithm=sha1" -H "User-Agent: $UA")
-    http_code=$(echo "$response" | tail -1)
-    body=$(echo "$response" | sed '$d')
+        has_version=$(curl -s "https://api.modrinth.com/v2/project/$project_id/version?game_versions=%5B%22$TARGET_MC_VERSION%22%5D&loaders=%5B%22fabric%22%5D" \
+            -H "User-Agent: $UA" | python3 -c "import json,sys; d=json.load(sys.stdin); print('yes' if d else 'no')" 2>/dev/null || true)
+        if [ "$has_version" = "yes" ]; then
+            MODS_OK+=("$name")
+        else
+            MODS_FAIL+=("$name")
+        fi
+    done < <(python3 -c "
+import json, sys
+with open(sys.argv[1]) as f: mods = json.load(f)['mods']
+for m in mods:
+    if m['source'] == 'modrinth':
+        print(f'{m[\"name\"]}|{m[\"project_id\"]}')
+" "$MODS_JSON")
 
-    if [ "$http_code" != "200" ]; then
-        MODS_UNKNOWN+=("$name")
-        continue
-    fi
+    # GitHub mods
+    while IFS= read -r line; do
+        name=$(echo "$line" | cut -d'|' -f1)
+        repo=$(echo "$line" | cut -d'|' -f2)
+        pattern=$(echo "$line" | cut -d'|' -f3)
+        echo "github|$name|$repo|$pattern" >> "$MOD_CACHE"
 
-    project_id=$(echo "$body" | python3 -c "import json,sys; print(json.load(sys.stdin).get('project_id',''))" 2>/dev/null || true)
-    if [ -z "$project_id" ]; then
-        MODS_UNKNOWN+=("$name")
-        continue
-    fi
-
-    # 缓存映射
-    echo "$name=$project_id" >> "$MOD_CACHE"
-
-    # 检查该 mod 是否有目标版本
-    has_version=$(curl -s -w "\n%{http_code}" "https://api.modrinth.com/v2/project/$project_id/version?game_versions=%5B%22$TARGET_MC_VERSION%22%5D&loaders=%5B%22fabric%22%5D" \
-        -H "User-Agent: $UA")
-    hv_code=$(echo "$has_version" | tail -1)
-    hv_body=$(echo "$has_version" | sed '$d')
-
-    if [ "$hv_code" != "200" ]; then
-        warn "API 查询失败 (HTTP $hv_code): $name"
-        MODS_UNKNOWN+=("$name")
-        continue
-    fi
-
-    has_it=$(echo "$hv_body" | python3 -c "import json,sys; d=json.load(sys.stdin); print('yes' if d else 'no')" 2>/dev/null || true)
-    if [ "$has_it" = "yes" ]; then
-        MODS_OK+=("$name")
-    else
-        MODS_FAIL+=("$name")
-    fi
-done
+        # 检查 GitHub releases 中是否有匹配目标版本的 asset
+        has_version=$(curl -s "https://api.github.com/repos/$repo/releases" -H "User-Agent: $UA" | python3 -c "
+import json, sys, fnmatch
+releases = json.load(sys.stdin)
+pattern = sys.argv[1].replace('{mc_version}', sys.argv[2])
+for rel in releases:
+    for asset in rel.get('assets', []):
+        if fnmatch.fnmatch(asset['name'], pattern):
+            print('yes'); sys.exit()
+print('no')
+" "$pattern" "$TARGET_MC_VERSION" 2>/dev/null || true)
+        if [ "$has_version" = "yes" ]; then
+            MODS_OK+=("$name")
+        else
+            MODS_FAIL+=("$name")
+        fi
+    done < <(python3 -c "
+import json, sys
+with open(sys.argv[1]) as f: mods = json.load(f)['mods']
+for m in mods:
+    if m['source'] == 'github':
+        print(f'{m[\"name\"]}|{m[\"repo\"]}|{m[\"asset_pattern\"]}')
+" "$MODS_JSON")
+else
+    warn "未找到 $MODS_JSON，使用 SHA1 识别模式"
+    # 回退到旧的 SHA1 识别逻辑
+    for jar in "$MODS_DIR"/*.jar; do
+        [ -f "$jar" ] || continue
+        [ -d "$jar" ] && continue
+        name=$(basename "$jar")
+        sha1=$(sha1sum "$jar" | cut -d' ' -f1)
+        response=$(curl -s -w "\n%{http_code}" "https://api.modrinth.com/v2/version_file/$sha1?algorithm=sha1" -H "User-Agent: $UA")
+        http_code=$(echo "$response" | tail -1)
+        body=$(echo "$response" | sed '$d')
+        if [ "$http_code" != "200" ]; then
+            MODS_UNKNOWN+=("$name"); continue
+        fi
+        project_id=$(echo "$body" | python3 -c "import json,sys; print(json.load(sys.stdin).get('project_id',''))" 2>/dev/null || true)
+        if [ -z "$project_id" ]; then
+            MODS_UNKNOWN+=("$name"); continue
+        fi
+        echo "modrinth|$name|$project_id" >> "$MOD_CACHE"
+        has_it=$(curl -s "https://api.modrinth.com/v2/project/$project_id/version?game_versions=%5B%22$TARGET_MC_VERSION%22%5D&loaders=%5B%22fabric%22%5D" \
+            -H "User-Agent: $UA" | python3 -c "import json,sys; d=json.load(sys.stdin); print('yes' if d else 'no')" 2>/dev/null || true)
+        if [ "$has_it" = "yes" ]; then MODS_OK+=("$name"); else MODS_FAIL+=("$name"); fi
+    done
+fi
 
 echo ""
 info "兼容 MC $TARGET_MC_VERSION: ${#MODS_OK[@]} 个 Mod"
@@ -364,30 +378,37 @@ update_count=0
 fail_count=0
 dep_ids=""
 
+# 从 MOD_CACHE 读取每个 mod 的信息并更新
+# 先建立 project_id -> 当前文件名 的映射（批量 SHA1 查询）
+declare -A PID_TO_JAR
 for jar in "$MODS_DIR"/*.jar; do
     [ -f "$jar" ] || continue
-    [ -d "$jar" ] && continue
-    name=$(basename "$jar")
+    sha1=$(sha1sum "$jar" | cut -d' ' -f1)
+    pid=$(curl -s "https://api.modrinth.com/v2/version_file/$sha1?algorithm=sha1" -H "User-Agent: $UA" \
+        | python3 -c "import json,sys; print(json.load(sys.stdin).get('project_id',''))" 2>/dev/null || true)
+    [ -n "$pid" ] && PID_TO_JAR["$pid"]="$jar"
+done
 
-    # 从缓存读取 project_id
-    project_id=$(grep "^${name}=" "$MOD_CACHE" 2>/dev/null | cut -d= -f2)
-    if [ -z "$project_id" ]; then
-        warn "跳过 (未识别): $name"
-        continue
-    fi
+while IFS= read -r cache_line; do
+    source_type=$(echo "$cache_line" | cut -d'|' -f1)
+    mod_name=$(echo "$cache_line" | cut -d'|' -f2)
 
-    # 获取目标版本的最新 release
-    response=$(curl -s -w "\n%{http_code}" "https://api.modrinth.com/v2/project/$project_id/version?game_versions=%5B%22$TARGET_MC_VERSION%22%5D&loaders=%5B%22fabric%22%5D" \
-        -H "User-Agent: $UA")
-    http_code=$(echo "$response" | tail -1)
-    body=$(echo "$response" | sed '$d')
+    if [ "$source_type" = "modrinth" ]; then
+        project_id=$(echo "$cache_line" | cut -d'|' -f3)
+        current_jar="${PID_TO_JAR[$project_id]:-}"
 
-    if [ "$http_code" != "200" ]; then
-        warn "API 查询失败 (HTTP $http_code)，保留旧版: $name"
-        continue
-    fi
+        # 获取目标版本的最新 release
+        response=$(curl -s -w "\n%{http_code}" "https://api.modrinth.com/v2/project/$project_id/version?game_versions=%5B%22$TARGET_MC_VERSION%22%5D&loaders=%5B%22fabric%22%5D" \
+            -H "User-Agent: $UA")
+        http_code=$(echo "$response" | tail -1)
+        body=$(echo "$response" | sed '$d')
 
-    new_info=$(echo "$body" | python3 -c "
+        if [ "$http_code" != "200" ]; then
+            warn "API 查询失败 (HTTP $http_code)，保留旧版: $mod_name"
+            continue
+        fi
+
+        new_info=$(echo "$body" | python3 -c "
 import json,sys
 d = json.load(sys.stdin)
 releases = [v for v in d if v['version_type'] == 'release']
@@ -399,54 +420,108 @@ if releases:
     print(f['filename'])
     print(v['version_number'])
     print(f.get('hashes',{}).get('sha1',''))
-    # 输出 required 依赖的 project_id
     for dep in v.get('dependencies', []):
         if dep.get('dependency_type') == 'required' and dep.get('project_id'):
             print('DEP:' + dep['project_id'])
 " 2>/dev/null || true)
 
-    if [ -z "$new_info" ]; then
-        warn "不兼容，已禁用: $name"
-        mv "$jar" "$MODS_DIR.disabled/"
-        fail_count=$((fail_count + 1))
-        continue
-    fi
-
-    new_url=$(echo "$new_info" | grep -v '^DEP:' | sed -n '1p')
-    new_filename=$(echo "$new_info" | grep -v '^DEP:' | sed -n '2p')
-    new_version=$(echo "$new_info" | grep -v '^DEP:' | sed -n '3p')
-    new_sha1=$(echo "$new_info" | grep -v '^DEP:' | sed -n '4p')
-
-    # 收集依赖
-    for dep_id in $(echo "$new_info" | grep '^DEP:' | cut -d: -f2); do
-        dep_ids="$dep_ids $dep_id"
-    done
-
-    if [ "$name" = "$new_filename" ]; then
-        info "已是最新: $name"
-        continue
-    fi
-
-    if curl -fSL -o "$MODS_DIR/$new_filename" "$new_url" -H "User-Agent: $UA" 2>/dev/null; then
-        if [ -n "$new_sha1" ] && ! verify_sha "$MODS_DIR/$new_filename" "$new_sha1" sha1; then
-            error "SHA1 校验失败: $new_filename，保留旧版"
-            rm -f "$MODS_DIR/$new_filename"
+        if [ -z "$new_info" ]; then
+            if [ -n "$current_jar" ]; then
+                warn "不兼容，已禁用: $mod_name"
+                mv "$current_jar" "$MODS_DIR.disabled/"
+                fail_count=$((fail_count + 1))
+            fi
             continue
         fi
-        rm -f "$jar"
-        info "已更新: $name -> $new_filename"
-        update_count=$((update_count + 1))
-    else
-        warn "下载失败，保留旧版: $name"
+
+        new_url=$(echo "$new_info" | grep -v '^DEP:' | sed -n '1p')
+        new_filename=$(echo "$new_info" | grep -v '^DEP:' | sed -n '2p')
+        new_version=$(echo "$new_info" | grep -v '^DEP:' | sed -n '3p')
+        new_sha1=$(echo "$new_info" | grep -v '^DEP:' | sed -n '4p')
+
+        # 收集依赖
+        for dep_id in $(echo "$new_info" | grep '^DEP:' | cut -d: -f2); do
+            dep_ids="$dep_ids $dep_id"
+        done
+
+        if [ -n "$current_jar" ] && [ "$(basename "$current_jar")" = "$new_filename" ]; then
+            info "已是最新: $mod_name"
+            continue
+        fi
+
+        if curl -fSL -o "$MODS_DIR/$new_filename" "$new_url" -H "User-Agent: $UA" 2>/dev/null; then
+            if [ -n "$new_sha1" ] && ! verify_sha "$MODS_DIR/$new_filename" "$new_sha1" sha1; then
+                error "SHA1 校验失败: $new_filename，保留旧版"
+                rm -f "$MODS_DIR/$new_filename"
+                continue
+            fi
+            [ -n "$current_jar" ] && rm -f "$current_jar"
+            info "已更新: $mod_name -> $new_filename"
+            update_count=$((update_count + 1))
+        else
+            warn "下载失败，保留旧版: $mod_name"
+        fi
+
+    elif [ "$source_type" = "github" ]; then
+        repo=$(echo "$cache_line" | cut -d'|' -f3)
+        pattern=$(echo "$cache_line" | cut -d'|' -f4)
+
+        # 从 GitHub releases 查找匹配目标版本的 asset
+        download_info=$(curl -s "https://api.github.com/repos/$repo/releases" -H "User-Agent: $UA" | python3 -c "
+import json, sys, fnmatch
+releases = json.load(sys.stdin)
+pattern = sys.argv[1].replace('{mc_version}', sys.argv[2])
+for rel in releases:
+    for asset in rel.get('assets', []):
+        if fnmatch.fnmatch(asset['name'], pattern):
+            print(asset['browser_download_url'])
+            print(asset['name'])
+            sys.exit()
+" "$pattern" "$TARGET_MC_VERSION" 2>/dev/null || true)
+
+        if [ -z "$download_info" ]; then
+            # 找到当前文件并禁用
+            current_pattern=$(echo "$pattern" | sed "s/{mc_version}/*/g")
+            for jar in "$MODS_DIR"/$current_pattern; do
+                [ -f "$jar" ] || continue
+                warn "不兼容，已禁用: $(basename "$jar")"
+                mv "$jar" "$MODS_DIR.disabled/"
+                fail_count=$((fail_count + 1))
+                break
+            done
+            continue
+        fi
+
+        new_url=$(echo "$download_info" | sed -n '1p')
+        new_filename=$(echo "$download_info" | sed -n '2p')
+
+        # 检查是否已是最新
+        if [ -f "$MODS_DIR/$new_filename" ]; then
+            info "已是最新: $mod_name"
+            continue
+        fi
+
+        # 删除旧版本文件
+        current_pattern=$(echo "$pattern" | sed "s/{mc_version}/*/g")
+        for old_jar in "$MODS_DIR"/$current_pattern; do
+            [ -f "$old_jar" ] && rm -f "$old_jar"
+        done
+
+        if curl -fSL -o "$MODS_DIR/$new_filename" "$new_url" -H "User-Agent: $UA" 2>/dev/null; then
+            info "已更新: $mod_name -> $new_filename"
+            update_count=$((update_count + 1))
+        else
+            warn "下载失败: $mod_name"
+        fi
     fi
-done
+done < "$MOD_CACHE"
 
 # 安装缺失的依赖 mod
 if [ -n "$dep_ids" ]; then
     # 去重
     dep_ids=$(echo "$dep_ids" | tr ' ' '\n' | sort -u)
     # 获取已安装 mod 的 project_id 列表
-    installed_ids=$(cut -d= -f2 "$MOD_CACHE" 2>/dev/null | sort -u)
+    installed_ids=$(grep '^modrinth|' "$MOD_CACHE" 2>/dev/null | cut -d'|' -f3 | sort -u)
 
     for dep_id in $dep_ids; do
         # 跳过已安装的
