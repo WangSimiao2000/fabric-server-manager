@@ -3,6 +3,7 @@ GameFile/*
 !GameFile/config/
 !GameFile/eula.txt
 !GameFile/server.properties.example
+!GameFile/mods.json
 
 # config 下的运行时 / 缓存文件仍然忽略
 GameFile/config/spark/tmp/
