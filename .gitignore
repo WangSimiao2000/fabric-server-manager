@@ -22,3 +22,8 @@ backups/
 .watchdog/
 .mc.lock
 __pycache__/
+
+# quickshulker 运行时配置（mod 自动改写，忽略）
+GameFile/config/quickshulkerconfig.json5
+# 备份文件
+*.bak
