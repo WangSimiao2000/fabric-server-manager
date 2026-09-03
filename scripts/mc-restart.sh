@@ -22,6 +22,12 @@ echo "stopped:mc-restart:$(date +%s)" > "$BASE_DIR/.watchdog/state"
 
 if is_running; then
     log "发送重启警告..."
+    # >>> QQ 机器人维护播报钩子：写信号文件，由 mc-qq-bot 读取并主动播报 <<<
+    QQ_SIGNAL="/home/mickeymiao/Projects/mc-qq-bot/maintenance.signal"
+    if [ -d "$(dirname "$QQ_SIGNAL")" ]; then
+        printf '{"until": %s, "warn_minutes": %s}\n' "$(( $(date +%s) + WARN_MIN*60 + 1200 ))" "$WARN_MIN" > "$QQ_SIGNAL" 2>/dev/null || true
+    fi
+    # <<< 钩子结束 >>>
     "$MC" player cmd "say §e[自动维护] 服务器将在${WARN_MIN}分钟后重启"
 
     if [ "$WARN_MIN" -gt 1 ]; then
