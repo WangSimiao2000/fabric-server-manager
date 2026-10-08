@@ -22,7 +22,8 @@ done
 suite "ShellCheck 无 error（部署与工具脚本）"
 for f in "$SCRIPT_DIR"/deploy.sh "$SCRIPT_DIR"/install-deps.sh \
          "$SCRIPT_DIR"/install-service.sh "$SCRIPT_DIR"/upgrade.sh \
-         "$SCRIPT_DIR"/cleanup.sh "$SCRIPT_DIR"/setup-easyauth.sh; do
+         "$SCRIPT_DIR"/cleanup.sh "$SCRIPT_DIR"/setup-easyauth.sh \
+         "$SCRIPT_DIR"/harden-ssh.sh; do
     [ -f "$f" ] || continue
     name=$(basename "$f")
     errors=$(shellcheck -x -S error "$f" 2>&1)

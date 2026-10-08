@@ -128,6 +128,20 @@ bash scripts/deploy.sh
 | `mc.sh watchdog test` | 发送测试通知邮件 |
 | `mc.sh watchdog reset` | 重置崩溃计数 |
 
+## 🔒 SSH 加固
+
+若服务器的 SSH 暴露在公网（直接暴露或经 frp 等内网穿透映射），建议关闭密码登录、仅允许公钥认证：
+
+```bash
+sudo bash scripts/harden-ssh.sh            # 执行加固
+sudo bash scripts/harden-ssh.sh --status   # 只查看现状
+sudo bash scripts/harden-ssh.sh --revert   # 回滚
+```
+
+经内网穿透时，sshd 看到的来源 IP 通常恒为 `127.0.0.1`，fail2ban 等按 IP 封禁的手段会失效，关闭密码认证是唯一有效的防爆破手段。
+
+脚本会先确认所有可登录用户都已配置公钥，否则中止；并自动处理 Ubuntu 云镜像中 `50-cloud-init.conf` 抢先声明 `PasswordAuthentication yes` 导致修改无效的问题。**执行后请保持当前会话，另开窗口确认能登录后再退出。**
+
 ## ⚙️ 配置文件
 
 所有可调参数集中在 `config.json`（从 `config.example.json` 复制）：
@@ -201,6 +215,7 @@ fabric-server-manager/
 │   ├── deploy.sh                # 一键部署
 │   ├── install-deps.sh          # 安装系统依赖
 │   ├── install-service.sh       # 安装 systemd + cron
+│   ├── harden-ssh.sh            # SSH 加固：关闭密码登录（需 sudo）
 │   ├── mc-restart.sh            # 定时重启脚本
 │   ├── cleanup.sh               # 清理临时文件
 │   └── setup-easyauth.sh        # 安装 EasyAuth
