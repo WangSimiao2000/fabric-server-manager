@@ -96,29 +96,62 @@ cmd_start() {
     # 同步 motd 配置到 server.properties 和 MiniMOTD
     python3 "$SCRIPT_DIR/lib/sync_motd.py" "$CONFIG_FILE" "$GAME_DIR" 2>/dev/null || true
 
+    # 记录启动前日志的"指纹"与长度，用于区分本次运行的输出与上次的残留。
+    # 不能只用字节偏移：MC 启动时会轮转 latest.log（旧文件压缩归档、新建空文件），
+    # 新旧文件长度常常接近甚至相同，且 inode 号可能被文件系统复用，
+    # 两者都无法可靠识别"文件已被替换"。首行指纹（前 200 字节含时间戳）才可靠。
+    local log_file="$GAME_DIR/logs/latest.log"
+    local log_size old_fp
+    log_size=$(wc -c < "$log_file" 2>/dev/null || echo 0)
+    old_fp=$(head -c 200 "$log_file" 2>/dev/null | cksum)
+
     # 200>&- 关闭 flock 的 fd，防止 tmux 继承锁导致后续 mc-restart 无法获取锁
     tmux new-session -ds "$SESSION_NAME" -c "$GAME_DIR" \
         "java $JAVA_OPTS -jar $FABRIC_JAR nogui" 200>&-
     sleep 3  # 等待 tmux 会话和 Java 进程启动
-    if is_running; then
-        info "服务器已启动 (PID: $(get_pid))"
-        # 同步出生点
-        local sx sy sz
-        sx=$(cfg server.spawn.x 2>/dev/null)
-        sy=$(cfg server.spawn.y 2>/dev/null)
-        sz=$(cfg server.spawn.z 2>/dev/null)
-        if [ -n "$sx" ] && [ -n "$sy" ] && [ -n "$sz" ]; then
-            local wait=0 log_size
-            log_size=$(wc -c < "$GAME_DIR/logs/latest.log" 2>/dev/null || echo 0)
-            # 只检查启动后新增的日志内容，避免匹配上次残留的 "Done"
-            while [ $wait -lt 60 ]; do
-                if tail -c +"$((log_size + 1))" "$GAME_DIR/logs/latest.log" 2>/dev/null | grep -q "Done ("; then break; fi
-                sleep 1; wait=$((wait + 1))
-            done
-            send_cmd "setworldspawn $sx $sy $sz"
-        fi
-    else
+    if ! is_running; then
         error "启动失败，请检查日志: $GAME_DIR/logs/latest.log"
+        return 1
+    fi
+
+    # 等待服务端真正就绪。仅凭"进程存活"不足以判定启动成功：
+    # 例如 .fabric 缺失时启动器会退化为安装器去外网下载，进程可存活数十秒后退出，
+    # 旧实现 sleep 3 + is_running 会误报"已启动"，掩盖真实错误。
+    local waited=0 ready=false cur_fp cur_size
+    local max_wait=${MC_START_READY_TIMEOUT:-120}   # 可被测试覆盖
+    while [ "$waited" -lt "$max_wait" ]; do
+        cur_fp=$(head -c 200 "$log_file" 2>/dev/null | cksum)
+        cur_size=$(wc -c < "$log_file" 2>/dev/null || echo 0)
+        if [ "$cur_fp" != "$old_fp" ] || [ "$cur_size" -lt "$log_size" ]; then
+            # 日志已轮转/新建，当前文件只含本次运行的输出，可直接整文件匹配
+            grep -q "Done (" "$log_file" 2>/dev/null && { ready=true; break; }
+        else
+            # 日志未轮转（仍是同一文件在追加），只检查启动后新增的部分
+            tail -c +"$((log_size + 1))" "$log_file" 2>/dev/null | grep -q "Done (" \
+                && { ready=true; break; }
+        fi
+        is_running || break   # 进程已退出，无需继续等待
+        sleep 1; waited=$((waited + 1))
+    done
+
+    if [ "$ready" != true ]; then
+        if is_running; then
+            warn "进程存活但 ${waited}s 内未就绪，请检查日志: $GAME_DIR/logs/latest.log"
+        else
+            error "启动失败：进程已退出，请检查日志: $GAME_DIR/logs/latest.log"
+        fi
+        return 1
+    fi
+
+    info "服务器已启动 (PID: $(get_pid))"
+
+    # 同步出生点
+    local sx sy sz
+    sx=$(cfg server.spawn.x 2>/dev/null)
+    sy=$(cfg server.spawn.y 2>/dev/null)
+    sz=$(cfg server.spawn.z 2>/dev/null)
+    if [ -n "$sx" ] && [ -n "$sy" ] && [ -n "$sz" ]; then
+        send_cmd "setworldspawn $sx $sy $sz"
     fi
 }
 

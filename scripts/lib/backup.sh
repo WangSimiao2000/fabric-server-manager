@@ -62,11 +62,18 @@ for e in c.get('backup', {}).get('exclude', []):
 " "$CONFIG_FILE")
 
     info "创建备份: $filename"
+    # .fabric 必须纳入备份：其中 .fabric/server 存放启动器下载的原版服务端
+    # 与生成的 launch JAR。缺失时 fabric-server-*.jar 会退化为安装器模式，
+    # 尝试从 Mojang / maven.fabricmc.net 重新下载，外网不畅时直接无法启动。
+    # remappedJars 是版本相关的重映射缓存，可再生且体积大，显式排除。
+    # 注意：config.json 的 exclude 用 "./xxx" 形式，与此处 tar 的成员名
+    # （"xxx" 无 ./ 前缀）不匹配，故这里单独声明一条有效的排除规则。
     tar -czf "$BACKUP_DIR/$filename" \
         -C "$GAME_DIR" \
         "${exclude_args[@]}" \
+        --exclude=.fabric/remappedJars \
         world server.properties ops.json banned-players.json banned-ips.json \
-        whitelist.json usercache.json mods config EasyAuth 2>&1 | grep -v 'file changed as we read it' || true
+        whitelist.json usercache.json mods config EasyAuth .fabric 2>&1 | grep -v 'file changed as we read it' || true
     if [ ! -s "$BACKUP_DIR/$filename" ]; then
         error "备份失败: $BACKUP_DIR/$filename"
         return 1
@@ -179,7 +186,12 @@ backup_restore() {
     load_config
     [ ! -f "$GAME_DIR/$FABRIC_JAR" ] && warn "备份中的 Fabric jar ($FABRIC_JAR) 不存在，可能需要手动修复"
 
-    rm -rf "$GAME_DIR/.fabric"
+    # 只清重映射缓存，不要删整个 .fabric。
+    # .fabric/server 存放启动器下载的原版服务端与生成的 launch JAR；整目录删掉后
+    # fabric-server-*.jar 会退化为安装器模式去 Mojang 重新下载，外网不畅时启动失败
+    # （2026-10-08 回档即因此导致服务器起不来）。冷备份已包含 .fabric，
+    # 此处仅清理可能与还原后的 mods 不匹配的 remappedJars。
+    rm -rf "$GAME_DIR/.fabric/remappedJars"
     info "启动服务器..."
     cmd_start
 }
@@ -224,6 +236,9 @@ cmd_rollback() {
     rm -rf "$GAME_DIR/mods.disabled"
     cp "$target/config.json" "$CONFIG_FILE"
     load_config
+    # 版本回退会切换 MC / loader 版本，.fabric 内的 server 与 launch JAR 与新版本
+    # 不匹配，必须整体重建；这一步需要能访问 Mojang 与 maven.fabricmc.net。
+    warn "将重建 Fabric 运行时缓存，此过程需要外网访问（Mojang / maven.fabricmc.net）"
     rm -rf "$GAME_DIR/.fabric"
 
     [ -f /etc/systemd/system/mc-server.service ] && sudo bash "$SCRIPT_DIR/install-service.sh"
