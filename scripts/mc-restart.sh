@@ -23,7 +23,9 @@ echo "stopped:mc-restart:$(date +%s)" > "$BASE_DIR/.watchdog/state"
 if is_running; then
     log "发送重启警告..."
     # >>> QQ 机器人维护播报钩子：写信号文件，由 mc-qq-bot 读取并主动播报 <<<
-    QQ_SIGNAL="/home/mickeymiao/Projects/mc-qq-bot/maintenance.signal"
+    # 路径可用 MC_QQ_SIGNAL 覆盖。测试会真实执行本脚本，若写死生产路径，
+    # 跑一遍测试套件就会往群里播报多条假维护（tests/framework.sh 已统一重定向）。
+    QQ_SIGNAL="${MC_QQ_SIGNAL:-/home/mickeymiao/Projects/mc-qq-bot/maintenance.signal}"
     if [ -d "$(dirname "$QQ_SIGNAL")" ]; then
         printf '{"until": %s, "warn_minutes": %s}\n' "$(( $(date +%s) + WARN_MIN*60 + 1200 ))" "$WARN_MIN" > "$QQ_SIGNAL" 2>/dev/null || true
     fi

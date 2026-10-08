@@ -1,5 +1,11 @@
 #!/bin/bash
 # 轻量级 Bash 测试框架
+
+# 多个测试会真实执行 mc-restart.sh，而该脚本会写 QQ 机器人的维护信号文件。
+# 若指向生产路径，跑一遍测试套件就会让机器人在群里播报多条假维护
+# （2026-10-08 实际发生过）。此处统一重定向到临时路径。
+export MC_QQ_SIGNAL="${MC_QQ_SIGNAL:-$(mktemp -u -t mc-qq-signal.XXXXXX)}"
+
 _PASS=0; _FAIL=0; _CURRENT_SUITE=""
 
 suite() { _CURRENT_SUITE="$1"; echo -e "\n\033[0;36m=== $1 ===\033[0m"; }
